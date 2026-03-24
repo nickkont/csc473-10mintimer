@@ -53,48 +53,7 @@
     </div>
   </main>
 
-  <script src="auth.js"></script>
-  <script>
-    (function () {
-      var form = document.getElementById("signup-form");
-      var btn = document.getElementById("signup-btn");
-      var msg = document.getElementById("signup-message");
-
-      function showMessage(text, type) {
-        msg.textContent = text;
-        msg.className = "auth-message show " + (type || "error");
-      }
-
-      form.addEventListener("submit", function (e) {
-        e.preventDefault();
-        var email = document.getElementById("signup-email").value.trim();
-        var password = document.getElementById("signup-password").value;
-        var displayName = document.getElementById("signup-name").value.trim() || null;
-        if (!email || !password) {
-          showMessage("Please enter email and password (min 6 characters).");
-          return;
-        }
-        if (password.length < 6) {
-          showMessage("Password must be at least 6 characters.");
-          return;
-        }
-        btn.disabled = true;
-        msg.className = "auth-message";
-        EventraAuth.signUp(email, password, displayName)
-          .then(function () {
-            showMessage("Account created. Redirecting…", "success");
-            window.location.href = "account.html";
-          })
-          .catch(function (err) {
-            if (err.code === "auth/configuration-not-found") {
-              showMessage("Auth not set up. In Firebase Console: Build → Authentication → Get started, then enable Email/Password under Sign-in method.");
-            } else {
-              showMessage(err.message || "Sign up failed.");
-            }
-            btn.disabled = false;
-          });
-      });
-    })();
-  </script>
+  <script src="dist/auth.js"></script>
+  <script src="dist/signup.js"></script>
 </body>
 </html>

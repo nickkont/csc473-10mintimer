@@ -49,43 +49,7 @@
     </div>
   </main>
 
-  <script src="auth.js"></script>
-  <script>
-    (function () {
-      var form = document.getElementById("login-form");
-      var btn = document.getElementById("login-btn");
-      var msg = document.getElementById("login-message");
-
-      function showMessage(text, type) {
-        msg.textContent = text;
-        msg.className = "auth-message show " + (type || "error");
-      }
-
-      form.addEventListener("submit", function (e) {
-        e.preventDefault();
-        var email = document.getElementById("login-email").value.trim();
-        var password = document.getElementById("login-password").value;
-        if (!email || !password) {
-          showMessage("Please enter email and password.");
-          return;
-        }
-        btn.disabled = true;
-        msg.className = "auth-message";
-        EventraAuth.signIn(email, password)
-          .then(function () {
-            showMessage("Signed in. Redirecting…", "success");
-            window.location.href = "account.html";
-          })
-          .catch(function (err) {
-            if (err.code === "auth/configuration-not-found") {
-              showMessage("Auth not set up. In Firebase Console: Build → Authentication → Get started, then enable Email/Password under Sign-in method.");
-            } else {
-              showMessage(err.message || "Login failed.");
-            }
-            btn.disabled = false;
-          });
-      });
-    })();
-  </script>
+  <script src="dist/auth.js"></script>
+  <script src="dist/login.js"></script>
 </body>
 </html>

@@ -53,7 +53,7 @@
         </p>
 
         <div class="hero-meta">
-          <span class="pill">HTML/CSS only</span>
+          <span class="pill">HTML/CSS/JS</span>
           <span class="pill">Team project UI draft</span>
           <span class="pill">No real-time data</span>
         </div>
@@ -62,7 +62,7 @@
       <aside class="hero-right">
         <div class="panel">
           <p class="panel-title">Featured market</p>
-          <p class="panel-sub">Last updated: 2/20, 11:24 PM</p>
+          <p class="panel-sub">Last updated: 3/16, 11:24 PM</p>
 
           <h2 class="featured-title">Will the shuttle bus break down next month?</h2>
 
@@ -405,22 +405,7 @@
     </div>
   </footer>
 
-  <script src="auth.js"></script>
-  <script>
-    (function () {
-      if (typeof EventraAuth === "undefined") return;
-      var signedIn = document.getElementById("nav-auth-signed-in");
-      var signedOut = document.getElementById("nav-auth");
-      EventraAuth.onAuthStateChanged(function (user) {
-        if (user && signedIn && signedOut) {
-          signedIn.style.display = "";
-          signedOut.style.display = "none";
-        } else if (signedIn && signedOut) {
-          signedIn.style.display = "none";
-          signedOut.style.display = "";
-        }
-      });
-    })();
-  </script>
+  <script src="dist/auth.js"></script>
+  <script src="dist/index.js"></script>
 </body>
 </html>
