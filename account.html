@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Eventra — Account Settings</title>
+  <link rel="stylesheet" href="account.css"/>
+</head>
+<body>
+
+<nav class="nav">
+  <div class="container">
+    <div class="nav-inner">
+      <a class="brand" href="index.html">
+        <div class="logo"></div>
+        <strong>Eventra</strong>
+      </a>
+      <div class="nav-links">
+        <a href="index.html#markets">Markets</a>
+        <a href="index.html#markets">CCNY</a>
+        <a href="index.html#markets">Community</a>
+        <a href="account.html" class="active">Account</a>
+      </div>
+      <div class="nav-account">
+        <span class="user-email" id="nav-user-email"></span>
+        <button type="button" class="btn-logout" id="btn-logout">Log out</button>
+        <div class="avatar" id="nav-avatar">?</div>
+      </div>
+    </div>
+  </div>
+</nav>
+
+<div class="page">
+  <div class="container">
+    <div class="page-title">Account Settings</div>
+
+    <!-- PROFILE -->
+    <div class="section">
+      <div class="section-head">Profile</div>
+      <div class="section-body">
+
+        <div class="row">
+          <div class="field">
+            <label>First Name</label>
+            <input type="text" id="profile-first" placeholder="First name"/>
+          </div>
+          <div class="field">
+            <label>Last Name</label>
+            <input type="text" id="profile-last" placeholder="Last name"/>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="field">
+            <label>Username</label>
+            <input type="text" id="profile-username" placeholder="username"/>
+          </div>
+          <div class="field">
+            <label>Email <span class="lock"> from Firebase Auth</span></label>
+            <input type="email" id="profile-email" value="" disabled placeholder="Sign in to see email"/>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="field">
+            <label>Phone</label>
+            <input type="tel" id="profile-phone" placeholder="(optional)"/>
+          </div>
+          <div class="field">
+            <label>Date of Birth</label>
+            <input type="date" id="profile-dob" />
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="field">
+            <label>Timezone</label>
+            <select id="profile-timezone">
+              <option value="ET" selected>Eastern Time (ET)</option>
+              <option value="CT">Central Time (CT)</option>
+              <option value="PT">Pacific Time (PT)</option>
+              <option value="UTC">UTC</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Language</label>
+            <select id="profile-language">
+              <option value="en" selected>English (US)</option>
+              <option value="es">Español</option>
+              <option value="fr">Français</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Bio</label>
+          <textarea id="profile-bio" placeholder="Tell us a sentence about yourself (optional)"></textarea>
+        </div>
+
+        <div class="save-row">
+          <button class="btn-ghost" id="btn-profile-cancel">Cancel</button>
+          <button class="btn-save" id="btn-profile-save">Save Profile</button>
+        </div>
+        <div class="auth-message-inline" id="profile-message" role="alert"></div>
+      </div>
+    </div>
+
+    <!-- SECURITY -->
+    <div class="section">
+      <div class="section-head">Security</div>
+      <div class="section-body">
+
+        <div class="field">
+          <label>Current Password</label>
+          <input type="password" placeholder="Enter current password"/>
+        </div>
+
+        <div class="row">
+          <div class="field">
+            <label>New Password</label>
+            <input type="password" placeholder="New password" id="pw" oninput="window.strength(this.value)"/>
+            <div class="strength">
+              <div class="seg" id="s1"></div>
+              <div class="seg" id="s2"></div>
+              <div class="seg" id="s3"></div>
+              <div class="seg" id="s4"></div>
+            </div>
+            <div class="s-hint" id="s-hint">—</div>
+          </div>
+          <div class="field">
+            <label>Confirm Password</label>
+            <input type="password" placeholder="Confirm new password"/>
+          </div>
+        </div>
+
+        <div class="toggle-row">
+          <div>
+            <div class="tl">Two-Factor Authentication</div>
+            <div class="td">Require a code from your authenticator app on login</div>
+          </div>
+          <div class="toggle" onclick="this.classList.toggle('on')"></div>
+        </div>
+
+        <div class="toggle-row">
+          <div>
+            <div class="tl">Login Email Alerts</div>
+            <div class="td">Email me when a new device signs in</div>
+          </div>
+          <div class="toggle on" onclick="this.classList.toggle('on')"></div>
+        </div>
+
+        <div class="save-row">
+          <button class="btn-ghost">Cancel</button>
+          <button class="btn-save">Update Security</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- NOTIFICATIONS -->
+    <div class="section">
+      <div class="section-head">Notifications</div>
+      <div class="section-body">
+
+        <div class="toggle-row">
+          <div>
+            <div class="tl">Market Price Alerts</div>
+            <div class="td">Notify when a watched contract moves ±5%</div>
+          </div>
+          <div class="toggle on" onclick="this.classList.toggle('on')"></div>
+        </div>
+
+        <div class="toggle-row">
+          <div>
+            <div class="tl">Contract Resolution</div>
+            <div class="td">Notify when a contract you hold resolves</div>
+          </div>
+          <div class="toggle on" onclick="this.classList.toggle('on')"></div>
+        </div>
+
+        <div class="toggle-row">
+          <div>
+            <div class="tl">Order Filled</div>
+            <div class="td">Notify when a limit order gets filled</div>
+          </div>
+          <div class="toggle on" onclick="this.classList.toggle('on')"></div>
+        </div>
+
+        <div class="toggle-row">
+          <div>
+            <div class="tl">Community Replies</div>
+            <div class="td">Notify when someone replies to your message</div>
+          </div>
+          <div class="toggle" onclick="this.classList.toggle('on')"></div>
+        </div>
+
+        <div class="toggle-row">
+          <div>
+            <div class="tl">New CCNY Markets</div>
+            <div class="td">Notify when a new CCNY contract is listed</div>
+          </div>
+          <div class="toggle on" onclick="this.classList.toggle('on')"></div>
+        </div>
+
+        <div class="save-row">
+          <button class="btn-ghost">Cancel</button>
+          <button class="btn-save">Save Preferences</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- PRIVACY -->
+    <div class="section">
+      <div class="section-head">Privacy</div>
+      <div class="section-body">
+
+        <div class="field">
+          <label>Profile Visibility</label>
+          <select>
+            <option>Public</option>
+            <option selected>Registered Users Only</option>
+            <option>Private</option>
+          </select>
+        </div>
+
+        <div class="toggle-row">
+          <div>
+            <div class="tl">Show P&L publicly</div>
+            <div class="td">Others can see your gains and losses</div>
+          </div>
+          <div class="toggle" onclick="this.classList.toggle('on')"></div>
+        </div>
+
+        <div class="toggle-row">
+          <div>
+            <div class="tl">Appear on leaderboard</div>
+            <div class="td">Your username and rank shown publicly</div>
+          </div>
+          <div class="toggle on" onclick="this.classList.toggle('on')"></div>
+        </div>
+
+        <div class="toggle-row">
+          <div>
+            <div class="tl">Allow direct messages</div>
+            <div class="td">Other users can message you</div>
+          </div>
+          <div class="toggle on" onclick="this.classList.toggle('on')"></div>
+        </div>
+
+        <div class="save-row">
+          <button class="btn-ghost">Cancel</button>
+          <button class="btn-save">Save Privacy</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- DELETE ACCOUNT (Firebase) -->
+    <div class="section section-danger">
+      <div class="section-head">Delete account</div>
+      <div class="section-body">
+        <p class="danger-text">Permanently delete your Eventra account and all associated data. This cannot be undone.</p>
+        <div class="field" id="delete-reauth-wrap" style="display: none;">
+          <label>Confirm your password</label>
+          <input type="password" id="delete-password" placeholder="Enter password to confirm"/>
+        </div>
+        <div class="save-row">
+          <button type="button" class="btn-ghost" id="btn-delete-cancel" style="display: none;">Cancel</button>
+          <button type="button" class="btn-danger" id="btn-delete-account">Delete my account</button>
+        </div>
+        <div class="auth-message-inline" id="delete-message" role="alert"></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<footer>Eventra · Account · Demo only (no real backend)</footer>
+
+<script src="dist/auth.js"></script>
+<script src="dist/account.js"></script>
+
+</body>
+</html>

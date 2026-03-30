@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sign up — Eventra</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="auth.css" />
+</head>
+<body class="auth-page">
+  <header class="site-header">
+    <nav class="nav container">
+      <a class="brand" href="index.html">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span class="brand-text">Eventra</span>
+      </a>
+      <div class="nav-actions">
+        <a class="btn btn-ghost" href="index.html#markets">Markets</a>
+        <a class="btn btn-ghost" href="account.html">Account</a>
+        <a class="btn btn-primary" href="login.html">Log in</a>
+      </div>
+    </nav>
+  </header>
+
+  <main>
+    <div class="auth-card">
+      <h1>Create account</h1>
+      <p class="sub">Sign up to trade contracts and manage your account.</p>
+
+      <form class="auth-form" id="signup-form" novalidate>
+        <div class="field">
+          <label for="signup-name">Display name</label>
+          <input type="text" id="signup-name" name="displayName" autocomplete="name" placeholder="Jordan" />
+        </div>
+        <div class="field">
+          <label for="signup-email">Email</label>
+          <input type="email" id="signup-email" name="email" required autocomplete="email" placeholder="you@example.com" />
+        </div>
+        <div class="field">
+          <label for="signup-password">Password</label>
+          <input type="password" id="signup-password" name="password" required autocomplete="new-password" placeholder="At least 6 characters" minlength="6" />
+        </div>
+        <button type="submit" class="btn-submit" id="signup-btn">Sign up</button>
+      </form>
+
+      <div class="auth-message" id="signup-message" role="alert"></div>
+      <p class="auth-footer">
+        Already have an account? <a href="login.html">Log in</a>
+      </p>
+    </div>
+  </main>
+
+  <script src="dist/auth.js"></script>
+  <script src="dist/signup.js"></script>
+</body>
+</html>

@@ -1,0 +1,12 @@
+{
+  "scripts": {
+    "build": "tsc",
+    "cloc": "cloc . --exclude-dir=node_modules"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0"
+  },
+  "dependencies": {
+    "firebase": "^12.10.0"
+  }
+}

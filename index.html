@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Eventra (Draft UI)</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+
+  <link rel="stylesheet" href="styles.css" />
+</head>
+
+<body>
+  <div class="bg-glow bg-glow-1" aria-hidden="true"></div>
+  <div class="bg-glow bg-glow-2" aria-hidden="true"></div>
+
+  <!-- Header -->
+  <header class="site-header">
+    <nav class="nav container">
+      <a class="brand" href="#">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span class="brand-text">Eventra</span>
+        <span class="draft-badge">Draft</span>
+      </a>
+
+      <div class="nav-actions">
+        <a class="btn btn-ghost" href="#markets">Markets</a>
+        <span class="nav-auth" id="nav-auth">
+          <a class="btn btn-ghost" href="login.html">Log in</a>
+          <a class="btn btn-primary" href="signup.html">Sign up</a>
+        </span>
+        <span class="nav-auth nav-auth-signed-in" id="nav-auth-signed-in" style="display: none;">
+          <a class="btn btn-ghost" href="account.html">Account</a>
+          <a class="btn btn-primary" href="account.html">Profile</a>
+        </span>
+      </div>
+    </nav>
+  </header>
+
+  <main class="container">
+    <!-- Hero -->
+    <section class="hero">
+      <div class="hero-left">
+        <h1>
+          Prediction markets, <span class="muted">but for things we actually talk about.</span>
+        </h1>
+
+        <p class="hero-sub">
+          Buy “YES/NO” contracts priced from $0.01 to $1.00. This is an early UI mock for the
+          class project (no functionality yet).
+        </p>
+
+        <div class="hero-meta">
+          <span class="pill">HTML/CSS/JS</span>
+          <span class="pill">Team project UI draft</span>
+          <span class="pill">No real-time data</span>
+        </div>
+      </div>
+
+      <aside class="hero-right">
+        <div class="panel">
+          <p class="panel-title">Featured market</p>
+          <p class="panel-sub">Last updated: 3/16, 11:24 PM</p>
+
+          <h2 class="featured-title">Will the shuttle bus break down next month?</h2>
+
+          <div class="featured-row">
+            <div>
+              <p class="small-label">Implied probability</p>
+              <p class="big-number">62%</p>
+            </div>
+            <div class="tiny-note">
+              <p class="small-label">Note</p>
+              <p class="tiny-text">Prices are placeholders.</p>
+            </div>
+          </div>
+
+          <div class="prices">
+            <div class="price yes">
+              <span class="price-label">YES</span>
+              <span class="price-val">$0.62</span>
+            </div>
+            <div class="price no">
+              <span class="price-label">NO</span>
+              <span class="price-val">$0.38</span>
+            </div>
+          </div>
+
+          <a class="btn btn-ghost btn-block" href="#markets">View all markets</a>
+        </div>
+      </aside>
+    </section>
+
+    <!-- Markets -->
+    <section id="markets" class="section">
+      <div class="section-head">
+        <div>
+          <h2>Markets</h2>
+          <p class="section-sub">Early draft layout with sample events. We’ll hook up real data later.</p>
+        </div>
+      </div>
+
+      <!-- CSS-only tabs -->
+      <div class="tabs">
+        <input type="radio" name="tab" id="tab-all" checked />
+        <input type="radio" name="tab" id="tab-ccny" />
+        <input type="radio" name="tab" id="tab-sports" />
+        <input type="radio" name="tab" id="tab-social" />
+
+        <div class="tab-buttons">
+          <label for="tab-all">All</label>
+          <label for="tab-ccny">CCNY</label>
+          <label for="tab-sports">Sports</label>
+          <label for="tab-social">Social</label>
+        </div>
+
+        <div class="tab-panels">
+          <!-- ALL -->
+          <div class="tab-panel panel-all">
+            <div class="grid">
+              <!-- CCNY 1 Question idea  -->
+              <article class="card">
+                <div class="card-top">
+                  <span class="tag">CCNY</span>
+                  <span class="status up">▲ trending</span>
+                </div>
+                <h3>Will the shuttle bus break down next month?</h3>
+
+                <div class="row">
+                  <span class="label">Probability</span>
+                  <span class="value">62%</span>
+                </div>
+
+                <div class="prices">
+                  <div class="price yes">
+                    <span class="price-label">YES</span>
+                    <span class="price-val">$0.62</span>
+                  </div>
+                  <div class="price no">
+                    <span class="price-label">NO</span>
+                    <span class="price-val">$0.38</span>
+                  </div>
+                </div>
+
+                <div class="meta">
+                  <span>Trades: 143</span>
+                  <span>Closes: Mar 31</span>
+                </div>
+
+                <a class="card-link" href="#m1">Details →</a>
+              </article>
+
+              <!-- CCNY 2 Question idea -->
+              <article class="card">
+                <div class="card-top">
+                  <span class="tag">CCNY</span>
+                  <span class="status down">▼ cooling</span>
+                </div>
+                <h3>Will Marshak Terrace be completed this year?</h3>
+
+                <div class="row">
+                  <span class="label">Probability</span>
+                  <span class="value">47%</span>
+                </div>
+
+                <div class="prices">
+                  <div class="price yes">
+                    <span class="price-label">YES</span>
+                    <span class="price-val">$0.47</span>
+                  </div>
+                  <div class="price no">
+                    <span class="price-label">NO</span>
+                    <span class="price-val">$0.53</span>
+                  </div>
+                </div>
+
+                <div class="meta">
+                  <span>Trades: 88</span>
+                  <span>Closes: Dec 20</span>
+                </div>
+
+                <a class="card-link" href="#m2">Details →</a>
+              </article>
+
+              <!-- Sports Question idea -->
+              <article class="card">
+                <div class="card-top">
+                  <span class="tag">Sports</span>
+                  <span class="status up">▲ trending</span>
+                </div>
+                <h3>Will the Knicks win their next 3 games?</h3>
+
+                <div class="row">
+                  <span class="label">Probability</span>
+                  <span class="value">35%</span>
+                </div>
+
+                <div class="prices">
+                  <div class="price yes">
+                    <span class="price-label">YES</span>
+                    <span class="price-val">$0.35</span>
+                  </div>
+                  <div class="price no">
+                    <span class="price-label">NO</span>
+                    <span class="price-val">$0.65</span>
+                  </div>
+                </div>
+
+                <div class="meta">
+                  <span>Trades: 210</span>
+                  <span>Closes: Feb 28</span>
+                </div>
+
+                <a class="card-link" href="#m3">Details →</a>
+              </article>
+
+              <!-- Social Question idea-->
+              <article class="card">
+                <div class="card-top">
+                  <span class="tag">Social</span>
+                  <span class="status neutral">• steady</span>
+                </div>
+                <h3>Will the library be crowded after 6 PM this week?</h3>
+
+                <div class="row">
+                  <span class="label">Probability</span>
+                  <span class="value">78%</span>
+                </div>
+
+                <div class="prices">
+                  <div class="price yes">
+                    <span class="price-label">YES</span>
+                    <span class="price-val">$0.78</span>
+                  </div>
+                  <div class="price no">
+                    <span class="price-label">NO</span>
+                    <span class="price-val">$0.22</span>
+                  </div>
+                </div>
+
+                <div class="meta">
+                  <span>Trades: 61</span>
+                  <span>Closes: Feb 23</span>
+                </div>
+
+                <a class="card-link" href="#m4">Details →</a>
+              </article>
+            </div>
+          </div>
+
+          <!-- CCNY -->
+          <div class="tab-panel panel-ccny">
+            <div class="grid">
+              <article class="card">
+                <div class="card-top">
+                  <span class="tag">CCNY</span>
+                  <span class="status up">▲ trending</span>
+                </div>
+                <h3>Will the shuttle bus break down next month?</h3>
+                <div class="row"><span class="label">Probability</span><span class="value">62%</span></div>
+                <div class="prices">
+                  <div class="price yes"><span class="price-label">YES</span><span class="price-val">$0.62</span></div>
+                  <div class="price no"><span class="price-label">NO</span><span class="price-val">$0.38</span></div>
+                </div>
+                <div class="meta"><span>Trades: 143</span><span>Closes: Mar 31</span></div>
+                <a class="card-link" href="#m1">Details →</a>
+              </article>
+
+              <article class="card">
+                <div class="card-top">
+                  <span class="tag">CCNY</span>
+                  <span class="status down">▼ cooling</span>
+                </div>
+                <h3>Will Marshak Terrace be completed this year?</h3>
+                <div class="row"><span class="label">Probability</span><span class="value">47%</span></div>
+                <div class="prices">
+                  <div class="price yes"><span class="price-label">YES</span><span class="price-val">$0.47</span></div>
+                  <div class="price no"><span class="price-label">NO</span><span class="price-val">$0.53</span></div>
+                </div>
+                <div class="meta"><span>Trades: 88</span><span>Closes: Dec 20</span></div>
+                <a class="card-link" href="#m2">Details →</a>
+              </article>
+            </div>
+          </div>
+
+          <!-- Sports -->
+          <div class="tab-panel panel-sports">
+            <div class="grid">
+              <article class="card">
+                <div class="card-top">
+                  <span class="tag">Sports</span>
+                  <span class="status up">▲ trending</span>
+                </div>
+                <h3>Will the Knicks win their next 3 games?</h3>
+                <div class="row"><span class="label">Probability</span><span class="value">35%</span></div>
+                <div class="prices">
+                  <div class="price yes"><span class="price-label">YES</span><span class="price-val">$0.35</span></div>
+                  <div class="price no"><span class="price-label">NO</span><span class="price-val">$0.65</span></div>
+                </div>
+                <div class="meta"><span>Trades: 210</span><span>Closes: Feb 28</span></div>
+                <a class="card-link" href="#m3">Details →</a>
+              </article>
+            </div>
+          </div>
+
+          <!-- Social -->
+          <div class="tab-panel panel-social">
+            <div class="grid">
+              <article class="card">
+                <div class="card-top">
+                  <span class="tag">Social</span>
+                  <span class="status neutral">• steady</span>
+                </div>
+                <h3>Will the library be crowded after 6 PM this week?</h3>
+                <div class="row"><span class="label">Probability</span><span class="value">78%</span></div>
+                <div class="prices">
+                  <div class="price yes"><span class="price-label">YES</span><span class="price-val">$0.78</span></div>
+                  <div class="price no"><span class="price-label">NO</span><span class="price-val">$0.22</span></div>
+                </div>
+                <div class="meta"><span>Trades: 61</span><span>Closes: Feb 23</span></div>
+                <a class="card-link" href="#m4">Details →</a>
+              </article>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- CSS-only Modals (:target) -->
+  <div id="m1" class="modal" aria-hidden="true">
+    <a href="#" class="modal-overlay" aria-label="Close"></a>
+    <div class="modal-card" role="dialog" aria-label="Market details">
+      <div class="modal-top">
+        <h3>Shuttle Bus Breakdown (Next Month)</h3>
+        <a href="#" class="modal-close" aria-label="Close">✕</a>
+      </div>
+      <p class="modal-text">CSS-only modal using <code>:target</code>. Prices are placeholders.</p>
+      <ul class="modal-list">
+        <li>YES: $0.62</li>
+        <li>NO: $0.38</li>
+        <li>Trades: 143</li>
+        <li>Closes: Mar 31</li>
+      </ul>
+    </div>
+  </div>
+
+  <div id="m2" class="modal" aria-hidden="true">
+    <a href="#" class="modal-overlay" aria-label="Close"></a>
+    <div class="modal-card" role="dialog" aria-label="Market details">
+      <div class="modal-top">
+        <h3>Marshak Terrace Completion (This Year)</h3>
+        <a href="#" class="modal-close" aria-label="Close">✕</a>
+      </div>
+      <p class="modal-text">Still no JS. Still looks interactive.</p>
+      <ul class="modal-list">
+        <li>YES: $0.47</li>
+        <li>NO: $0.53</li>
+        <li>Trades: 88</li>
+        <li>Closes: Dec 20</li>
+      </ul>
+    </div>
+  </div>
+
+  <div id="m3" class="modal" aria-hidden="true">
+    <a href="#" class="modal-overlay" aria-label="Close"></a>
+    <div class="modal-card" role="dialog" aria-label="Market details">
+      <div class="modal-top">
+        <h3>Knicks Win Next 3 Games</h3>
+        <a href="#" class="modal-close" aria-label="Close">✕</a>
+      </div>
+      <p class="modal-text">Modal animation uses keyframes.</p>
+      <ul class="modal-list">
+        <li>YES: $0.35</li>
+        <li>NO: $0.65</li>
+        <li>Trades: 210</li>
+        <li>Closes: Feb 28</li>
+      </ul>
+    </div>
+  </div>
+
+  <div id="m4" class="modal" aria-hidden="true">
+    <a href="#" class="modal-overlay" aria-label="Close"></a>
+    <div class="modal-card" role="dialog" aria-label="Market details">
+      <div class="modal-top">
+        <h3>Library Crowded After 6 PM</h3>
+        <a href="#" class="modal-close" aria-label="Close">✕</a>
+      </div>
+      <p class="modal-text">Backdrop blur + glow = free style points.</p>
+      <ul class="modal-list">
+        <li>YES: $0.78</li>
+        <li>NO: $0.22</li>
+        <li>Trades: 61</li>
+        <li>Closes: Feb 23</li>
+      </ul>
+    </div>
+  </div>
+
+  <footer class="footer">
+    <div class="container footer-inner">
+      <p>Eventra (Draft UI) · HTML/CSS-only class assignment</p>
+      <p class="muted">No backend, no API, no problems.</p>
+    </div>
+  </footer>
+
+  <script src="dist/auth.js"></script>
+  <script src="dist/index.js"></script>
+</body>
+</html>
