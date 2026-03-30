@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Eventra — Account Settings</title>
+  <link rel="stylesheet" href="account.css"/>
+</head>
+<body>
+
+<nav class="nav">
+  <div class="container">
+    <div class="nav-inner">
+      <a class="brand" href="#">
+        <div class="logo"></div>
+        <strong>Eventra</strong>
+      </a>
+      <div class="nav-links">
+        <a href="#">Markets</a>
+        <a href="#">CCNY</a>
+        <a href="#">Community</a>
+        <a href="#" class="active">Account</a>
+      </div>
+      <div class="avatar">JD</div>
+    </div>
+  </div>
+</nav>
+
+<div class="page">
+  <div class="container">
+    <div class="page-title">Account Settings</div>
+
+    <!-- PROFILE -->
+    <div class="section">
+      <div class="section-head">Profile</div>
+      <div class="section-body">
+
+        <div class="row">
+          <div class="field">
+            <label>First Name</label>
+            <input type="text" value="Jordan"/>
+          </div>
+          <div class="field">
+            <label>Last Name</label>
+            <input type="text" value="Davis"/>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="field">
+            <label>Username</label>
+            <input type="text" value="jordan_trades"/>
+          </div>
+          <div class="field">
+            <label>Email <span class="lock"> cannot be changed</span></label>
+            <input type="email" value="jordan.davis@ccny.cuny.edu" disabled/>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="field">
+            <label>Phone</label>
+            <input type="tel" value="(917) 555-0142"/>
+          </div>
+          <div class="field">
+            <label>Date of Birth</label>
+            <input type="date" value="2001-08-14"/>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="field">
+            <label>Timezone</label>
+            <select>
+              <option selected>Eastern Time (ET)</option>
+              <option>Central Time (CT)</option>
+              <option>Pacific Time (PT)</option>
+              <option>UTC</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Language</label>
+            <select>
+              <option selected>English (US)</option>
+              <option>Español</option>
+              <option>Français</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Bio</label>
+          <textarea>CCNY student. Trading Knicks contracts since day one.</textarea>
+        </div>
+
+        <div class="save-row">
+          <button class="btn-ghost">Cancel</button>
+          <button class="btn-save">Save Profile</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- SECURITY -->
+    <div class="section">
+      <div class="section-head">Security</div>
+      <div class="section-body">
+
+        <div class="field">
+          <label>Current Password</label>
+          <input type="password" placeholder="Enter current password"/>
+        </div>
+
+        <div class="row">
+          <div class="field">
+            <label>New Password</label>
+            <input type="password" placeholder="New password" id="pw" oninput="strength(this.value)"/>
+            <div class="strength">
+              <div class="seg" id="s1"></div>
+              <div class="seg" id="s2"></div>
+              <div class="seg" id="s3"></div>
+              <div class="seg" id="s4"></div>
+            </div>
+            <div class="s-hint" id="s-hint">—</div>
+          </div>
+          <div class="field">
+            <label>Confirm Password</label>
+            <input type="password" placeholder="Confirm new password"/>
+          </div>
+        </div>
+
+        <div class="toggle-row">
+          <div>
+            <div class="tl">Two-Factor Authentication</div>
+            <div class="td">Require a code from your authenticator app on login</div>
+          </div>
+          <div class="toggle" onclick="this.classList.toggle('on')"></div>
+        </div>
+
+        <div class="toggle-row">
+          <div>
+            <div class="tl">Login Email Alerts</div>
+            <div class="td">Email me when a new device signs in</div>
+          </div>
+          <div class="toggle on" onclick="this.classList.toggle('on')"></div>
+        </div>
+
+        <div class="save-row">
+          <button class="btn-ghost">Cancel</button>
+          <button class="btn-save">Update Security</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- NOTIFICATIONS -->
+    <div class="section">
+      <div class="section-head">Notifications</div>
+      <div class="section-body">
+
+        <div class="toggle-row">
+          <div>
+            <div class="tl">Market Price Alerts</div>
+            <div class="td">Notify when a watched contract moves ±5%</div>
+          </div>
+          <div class="toggle on" onclick="this.classList.toggle('on')"></div>
+        </div>
+
+        <div class="toggle-row">
+          <div>
+            <div class="tl">Contract Resolution</div>
+            <div class="td">Notify when a contract you hold resolves</div>
+          </div>
+          <div class="toggle on" onclick="this.classList.toggle('on')"></div>
+        </div>
+
+        <div class="toggle-row">
+          <div>
+            <div class="tl">Order Filled</div>
+            <div class="td">Notify when a limit order gets filled</div>
+          </div>
+          <div class="toggle on" onclick="this.classList.toggle('on')"></div>
+        </div>
+
+        <div class="toggle-row">
+          <div>
+            <div class="tl">Community Replies</div>
+            <div class="td">Notify when someone replies to your message</div>
+          </div>
+          <div class="toggle" onclick="this.classList.toggle('on')"></div>
+        </div>
+
+        <div class="toggle-row">
+          <div>
+            <div class="tl">New CCNY Markets</div>
+            <div class="td">Notify when a new CCNY contract is listed</div>
+          </div>
+          <div class="toggle on" onclick="this.classList.toggle('on')"></div>
+        </div>
+
+        <div class="save-row">
+          <button class="btn-ghost">Cancel</button>
+          <button class="btn-save">Save Preferences</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- PRIVACY -->
+    <div class="section">
+      <div class="section-head">Privacy</div>
+      <div class="section-body">
+
+        <div class="field">
+          <label>Profile Visibility</label>
+          <select>
+            <option>Public</option>
+            <option selected>Registered Users Only</option>
+            <option>Private</option>
+          </select>
+        </div>
+
+        <div class="toggle-row">
+          <div>
+            <div class="tl">Show P&L publicly</div>
+            <div class="td">Others can see your gains and losses</div>
+          </div>
+          <div class="toggle" onclick="this.classList.toggle('on')"></div>
+        </div>
+
+        <div class="toggle-row">
+          <div>
+            <div class="tl">Appear on leaderboard</div>
+            <div class="td">Your username and rank shown publicly</div>
+          </div>
+          <div class="toggle on" onclick="this.classList.toggle('on')"></div>
+        </div>
+
+        <div class="toggle-row">
+          <div>
+            <div class="tl">Allow direct messages</div>
+            <div class="td">Other users can message you</div>
+          </div>
+          <div class="toggle on" onclick="this.classList.toggle('on')"></div>
+        </div>
+
+        <div class="save-row">
+          <button class="btn-ghost">Cancel</button>
+          <button class="btn-save">Save Privacy</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<footer>Eventra · static mock · HTML + CSS only</footer>
+
+<script>
+  function strength(val) {
+    const segs = ['s1', 's2', 's3', 's4'].map(id => document.getElementById(id));
+    const hint = document.getElementById('s-hint');
+    segs.forEach(s => s.className = 'seg');
+    if (!val) { hint.textContent = '—'; return; }
+    let score = 0;
+    if (val.length >= 8)           score++;
+    if (/[A-Z]/.test(val))         score++;
+    if (/[0-9]/.test(val))         score++;
+    if (/[^A-Za-z0-9]/.test(val))  score++;
+    const cls    = score <= 1 ? 'weak' : score <= 2 ? 'medium' : 'strong';
+    const labels = ['', 'Weak', 'Fair', 'Strong', 'Very Strong'];
+    for (let i = 0; i < score; i++) segs[i].classList.add(cls);
+    hint.textContent = labels[score];
+  }
+</script>
+
+</body>
+</html>
