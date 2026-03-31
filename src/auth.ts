@@ -1,123 +1,56 @@
 /**
- * Eventra — Front-end only demo auth (no backend)
- *
- * Provides a tiny in-browser "auth" layer that behaves like Firebase Auth
- * from the UI's point of view but stores everything in localStorage.
- * For demos only — safe to commit to public repositories.
+ * Eventra — Firebase Auth wrapper
+ * Replaces the localStorage demo layer with real Firebase Authentication.
+ * Exposes the same window.EventraAuth API so all other scripts are unaffected.
  */
 ((): void => {
   "use strict";
 
-  const STORAGE_KEY = "eventra_demo_user";
+  const auth = firebase.auth();
 
-  function readUser(): DemoUser | null {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      return raw ? (JSON.parse(raw) as DemoUser) : null;
-    } catch {
-      return null;
-    }
+  function getAuth(): any {
+    return auth;
   }
 
-  function writeUser(user: DemoUser | null): void {
-    if (!user) {
-      localStorage.removeItem(STORAGE_KEY);
-    } else {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
-    }
+  function getCurrentUser(): FirebaseUser | null {
+    return auth.currentUser as FirebaseUser | null;
   }
 
-  let currentUser: DemoUser | null = readUser();
-
-  function getAuth(): null {
-    // Kept for compatibility with earlier code paths.
-    return null;
-  }
-
-  function getCurrentUser(): DemoUser | null {
-    return currentUser;
-  }
-
-  function onAuthStateChanged(callback: (user: DemoUser | null) => void): () => void {
-    if (typeof callback !== "function") return (): void => {};
-    callback(currentUser);
-    function handler(): void {
-      currentUser = readUser();
-      callback(currentUser);
-    }
-    window.addEventListener("storage", handler);
-    return (): void => {
-      window.removeEventListener("storage", handler);
-    };
+  function onAuthStateChanged(callback: (user: FirebaseUser | null) => void): () => void {
+    return auth.onAuthStateChanged(callback);
   }
 
   function signUp(email: string, password: string, displayName?: string | null): Promise<AuthResult> {
-    return new Promise<AuthResult>((resolve, reject) => {
-      if (!email || !password) {
-        reject(new Error("Please provide email and password."));
-        return;
-      }
-      const user: DemoUser = {
-        uid: "demo-" + email,
-        email,
-        password,
-        displayName: displayName || "",
-      };
-      currentUser = user;
-      writeUser(user);
-      resolve({ user });
-    });
+    return auth.createUserWithEmailAndPassword(email, password)
+      .then((result: any): Promise<AuthResult> => {
+        if (displayName) {
+          return result.user.updateProfile({ displayName })
+            .then((): AuthResult => ({ user: result.user as FirebaseUser }));
+        }
+        return Promise.resolve({ user: result.user as FirebaseUser });
+      });
   }
 
   function signIn(email: string, password: string): Promise<AuthResult> {
-    return new Promise<AuthResult>((resolve, reject) => {
-      if (!email || !password) {
-        reject(new Error("Please provide email and password."));
-        return;
-      }
-      const stored = readUser();
-      if (!stored || stored.email !== email || stored.password !== password) {
-        reject(new Error("Demo: email or password do not match the last created account."));
-        return;
-      }
-      currentUser = stored;
-      writeUser(stored);
-      resolve({ user: stored });
-    });
+    return auth.signInWithEmailAndPassword(email, password)
+      .then((result: any): AuthResult => ({ user: result.user as FirebaseUser }));
   }
 
   function signOut(): Promise<void> {
-    return new Promise<void>((resolve) => {
-      currentUser = null;
-      writeUser(null);
-      resolve();
-    });
+    return auth.signOut();
   }
 
   function deleteAccount(): Promise<void> {
-    return new Promise<void>((resolve, reject) => {
-      if (!currentUser) {
-        reject(new Error("No user signed in."));
-        return;
-      }
-      currentUser = null;
-      writeUser(null);
-      resolve();
-    });
+    const user = auth.currentUser;
+    if (!user) return Promise.reject(new Error("No user signed in."));
+    return user.delete();
   }
 
   function reauthenticate(password: string): Promise<void> {
-    return new Promise<void>((resolve, reject) => {
-      if (!currentUser) {
-        reject(new Error("No user signed in."));
-        return;
-      }
-      if (!password || password !== currentUser.password) {
-        reject(new Error("Password does not match the demo account."));
-        return;
-      }
-      resolve();
-    });
+    const user = auth.currentUser;
+    if (!user || !user.email) return Promise.reject(new Error("No user signed in."));
+    const credential = firebase.auth.EmailAuthProvider.credential(user.email, password);
+    return user.reauthenticateWithCredential(credential);
   }
 
   window.EventraAuth = {

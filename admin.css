@@ -1,0 +1,199 @@
+/* ── Admin page styles ── */
+
+.admin-badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(239,68,68,0.15);
+  color: #ef4444;
+  border: 1px solid rgba(239,68,68,0.3);
+  letter-spacing: 0.3px;
+  margin-left: 4px;
+}
+
+.admin-loading-screen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: calc(100vh - 64px);
+  color: rgba(255,255,255,0.4);
+  font-size: 0.95rem;
+}
+
+.admin-page {
+  padding: 40px 0 80px;
+}
+
+.admin-page-title {
+  font-family: 'Outfit', sans-serif;
+  font-size: 1.8rem;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  margin-bottom: 28px;
+  color: rgba(255,255,255,0.92);
+}
+
+/* ── Sections ── */
+.admin-section {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 16px;
+  overflow: hidden;
+  margin-bottom: 20px;
+}
+
+.admin-section-title {
+  padding: 14px 22px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.5);
+}
+
+/* ── Create form ── */
+.admin-form {
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.admin-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+}
+
+.admin-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.admin-field label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.5);
+}
+
+.admin-field input,
+.admin-field select {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 0.9rem;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 10px;
+  padding: 9px 13px;
+  color: rgba(255,255,255,0.92);
+  outline: none;
+  transition: border-color 0.15s;
+}
+.admin-field input:focus,
+.admin-field select:focus { border-color: rgba(255,255,255,0.28); }
+
+.admin-field select option { background: #141927; }
+
+.admin-hint {
+  font-size: 0.72rem;
+  color: rgba(255,255,255,0.35);
+}
+
+.admin-submit-btn {
+  align-self: flex-start;
+  padding: 10px 28px;
+  border-radius: 10px;
+  border: none;
+  background: linear-gradient(135deg, #7c3aed, #5b21b6);
+  color: #fff;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.admin-submit-btn:hover { opacity: 0.85; }
+.admin-submit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.admin-msg {
+  font-size: 0.85rem;
+  min-height: 18px;
+}
+.admin-msg.success { color: #22c55e; }
+.admin-msg.error   { color: #ef4444; }
+
+/* ── Markets list ── */
+.admin-loading {
+  padding: 20px 22px;
+  font-size: 0.88rem;
+  color: rgba(255,255,255,0.35);
+}
+
+.admin-market-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 22px;
+  border-bottom: 1px solid rgba(255,255,255,0.07);
+  flex-wrap: wrap;
+}
+.admin-market-row:last-child { border-bottom: none; }
+
+.admin-market-title {
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: rgba(255,255,255,0.92);
+  margin-bottom: 4px;
+}
+
+.admin-market-meta {
+  font-size: 0.78rem;
+  color: rgba(255,255,255,0.4);
+}
+
+.admin-resolve-btns { display: flex; gap: 8px; flex-shrink: 0; }
+
+.resolve-btn {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 7px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.resolve-btn.yes {
+  border: 1px solid rgba(34,197,94,0.4);
+  background: rgba(34,197,94,0.08);
+  color: #22c55e;
+}
+.resolve-btn.yes:hover { background: rgba(34,197,94,0.18); }
+
+.resolve-btn.no {
+  border: 1px solid rgba(239,68,68,0.4);
+  background: rgba(239,68,68,0.08);
+  color: #ef4444;
+}
+.resolve-btn.no:hover { background: rgba(239,68,68,0.18); }
+
+.resolved-chip {
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.06);
+  color: rgba(255,255,255,0.4);
+  flex-shrink: 0;
+}
+
+.resolved-label.yes { color: #22c55e; }
+.resolved-label.no  { color: #ef4444; }
+
+@media (max-width: 700px) {
+  .admin-row { grid-template-columns: 1fr; }
+}

@@ -11,5 +11,14 @@
  * committed to a public repository.
  */
 
-// Placeholder object to avoid reference errors in older code paths.
-const firebaseConfig = {};
+const firebaseConfig = {
+  apiKey: "AIzaSyDaJbo5MxHGGGa6iRdn6XLiRKQPxvws5N4",
+  authDomain: "eventra-101da.firebaseapp.com",
+  projectId: "eventra-101da",
+  storageBucket: "eventra-101da.firebasestorage.app",
+  messagingSenderId: "44095127960",
+  appId: "1:44095127960:web:facdde0cc508a75e766bed",
+  measurementId: "G-BYNPFVFVMC"
+};
+
+firebase.initializeApp(firebaseConfig);

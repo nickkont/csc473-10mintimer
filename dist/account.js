@@ -1,37 +1,35 @@
 "use strict";
 /**
  * Eventra — Account settings page script
- * Handles auth guard, profile load/save, account deletion,
- * and password-strength meter.
+ * Profile and wallet backed by Firestore.
  */
-// ── Auth / profile logic ────────────────────────────────────────────────────
+// ── Main account logic ───────────────────────────────────────────────────────
 (() => {
+    "use strict";
     const auth = window.EventraAuth;
     if (!auth)
         return;
+    const db = firebase.firestore();
     let currentUser = null;
     let lastProfileSnapshot = null;
     function redirectLogin() {
         window.location.href =
-            "login.html?redirect=" +
-                encodeURIComponent(window.location.pathname + window.location.search);
+            "login.html?redirect=" + encodeURIComponent(window.location.pathname);
     }
     function setUser(user) {
         const emailEl = document.getElementById("profile-email");
         const navEmail = document.getElementById("nav-user-email");
         const avatar = document.getElementById("nav-avatar");
         if (emailEl)
-            emailEl.value = user ? user.email : "";
+            emailEl.value = user ? (user.email || "") : "";
         if (navEmail)
-            navEmail.textContent = user ? user.email : "";
+            navEmail.textContent = user ? (user.email || "") : "";
         if (avatar) {
             if (user && user.displayName) {
-                avatar.textContent = (user.displayName
-                    .trim()
-                    .split(/\s+/)
+                avatar.textContent = user.displayName
+                    .trim().split(/\s+/)
                     .map((s) => s[0])
-                    .join("")
-                    .slice(0, 2) || user.email[0]).toUpperCase();
+                    .join("").slice(0, 2).toUpperCase();
             }
             else if (user && user.email) {
                 avatar.textContent = user.email[0].toUpperCase();
@@ -42,66 +40,136 @@
         }
     }
     function applyProfile(data) {
-        const first = document.getElementById("profile-first");
-        const last = document.getElementById("profile-last");
-        const username = document.getElementById("profile-username");
-        const phone = document.getElementById("profile-phone");
-        const dob = document.getElementById("profile-dob");
+        const ids = {
+            "profile-first": data ? data.firstName : "",
+            "profile-last": data ? data.lastName : "",
+            "profile-username": data ? data.username : "",
+            "profile-phone": data ? data.phone : "",
+            "profile-dob": data ? data.dob : "",
+        };
+        Object.keys(ids).forEach((id) => {
+            const el = document.getElementById(id);
+            if (el)
+                el.value = ids[id];
+        });
         const tz = document.getElementById("profile-timezone");
         const lang = document.getElementById("profile-language");
         const bio = document.getElementById("profile-bio");
-        if (!data) {
-            if (first)
-                first.value = "";
-            if (last)
-                last.value = "";
-            if (username)
-                username.value = "";
-            if (phone)
-                phone.value = "";
-            if (dob)
-                dob.value = "";
-            if (tz)
-                tz.value = "ET";
-            if (lang)
-                lang.value = "en";
-            if (bio)
-                bio.value = "";
-            return;
-        }
-        if (first)
-            first.value = data.firstName || "";
-        if (last)
-            last.value = data.lastName || "";
-        if (username)
-            username.value = data.username || "";
-        if (phone)
-            phone.value = data.phone || "";
-        if (dob)
-            dob.value = data.dob || "";
-        if (tz && data.timezone)
-            tz.value = data.timezone;
-        if (lang && data.language)
-            lang.value = data.language;
+        if (tz)
+            tz.value = (data && data.timezone) ? data.timezone : "ET";
+        if (lang)
+            lang.value = (data && data.language) ? data.language : "en";
         if (bio)
-            bio.value = data.bio || "";
+            bio.value = data ? data.bio : "";
     }
     function loadProfile(user) {
-        if (!user) {
-            applyProfile(null);
-            return;
-        }
-        try {
-            const raw = localStorage.getItem("eventra_profile_" + user.email);
-            const data = raw ? JSON.parse(raw) : null;
+        db.collection("users").doc(user.uid).get()
+            .then((doc) => {
+            const data = doc.exists ? doc.data() : null;
             lastProfileSnapshot = data;
             applyProfile(data);
-        }
-        catch (_a) {
+            loadWallet(user.uid);
+        })
+            .catch(() => {
             lastProfileSnapshot = null;
             applyProfile(null);
-        }
+            loadWallet(user.uid);
+        });
     }
+    // ── Wallet ─────────────────────────────────────────────────────────────────
+    function loadWallet(uid) {
+        const balanceEl = document.getElementById("wallet-balance");
+        const txList = document.getElementById("wallet-transactions");
+        db.collection("users").doc(uid).get()
+            .then((doc) => {
+            const data = doc.exists ? doc.data() : {};
+            const balance = data.walletBalance || 0;
+            const formatted = "$" + balance.toFixed(2);
+            if (balanceEl)
+                balanceEl.textContent = formatted;
+            const navBal = document.getElementById("nav-balance");
+            if (navBal)
+                navBal.textContent = formatted;
+            const adminLink = document.getElementById("nav-admin-link");
+            if (adminLink)
+                adminLink.style.display = data.role === "admin" ? "" : "none";
+        });
+        if (!txList)
+            return;
+        txList.innerHTML = '<p class="tx-empty">Loading\u2026</p>';
+        db.collection("users").doc(uid)
+            .collection("transactions")
+            .orderBy("timestamp", "desc")
+            .limit(10)
+            .get()
+            .then((snap) => {
+            if (snap.empty) {
+                txList.innerHTML = '<p class="tx-empty">No transactions yet.</p>';
+                return;
+            }
+            txList.innerHTML = snap.docs.map((d) => {
+                const tx = d.data();
+                const sign = tx.amount >= 0 ? "+" : "";
+                const cls = tx.amount >= 0 ? "tx-credit" : "tx-debit";
+                const date = tx.timestamp
+                    ? new Date(tx.timestamp.seconds * 1000).toLocaleDateString()
+                    : "\u2014";
+                return ('<div class="tx-row">' +
+                    '<div class="tx-left">' +
+                    '<div class="tx-desc">' + tx.description + "</div>" +
+                    '<div class="tx-date">' + date + "</div>" +
+                    "</div>" +
+                    '<div class="tx-amount ' + cls + '">' +
+                    sign + "$" + Math.abs(tx.amount).toFixed(2) +
+                    "</div>" +
+                    "</div>");
+            }).join("");
+        })
+            .catch(() => {
+            if (txList)
+                txList.innerHTML = '<p class="tx-empty">Could not load transactions.</p>';
+        });
+    }
+    const btnAddFunds = document.getElementById("btn-add-funds");
+    if (btnAddFunds) {
+        btnAddFunds.addEventListener("click", () => {
+            if (!currentUser)
+                return;
+            const uid = currentUser.uid;
+            const amount = 10;
+            const userRef = db.collection("users").doc(uid);
+            btnAddFunds.disabled = true;
+            userRef.get()
+                .then((doc) => {
+                const current = doc.exists ? (doc.data().walletBalance || 0) : 0;
+                const newBalance = current + amount;
+                const batch = db.batch();
+                batch.update(userRef, { walletBalance: newBalance });
+                const txRef = userRef.collection("transactions").doc();
+                batch.set(txRef, {
+                    type: "deposit",
+                    amount,
+                    description: "Demo deposit",
+                    balance: newBalance,
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+                });
+                return batch.commit().then(() => newBalance);
+            })
+                .then((newBalance) => {
+                const formatted = "$" + newBalance.toFixed(2);
+                const balanceEl = document.getElementById("wallet-balance");
+                if (balanceEl)
+                    balanceEl.textContent = formatted;
+                const navBal = document.getElementById("nav-balance");
+                if (navBal)
+                    navBal.textContent = formatted;
+                loadWallet(uid);
+                btnAddFunds.disabled = false;
+            })
+                .catch(() => { btnAddFunds.disabled = false; });
+        });
+    }
+    // ── Auth state ─────────────────────────────────────────────────────────────
     auth.onAuthStateChanged((user) => {
         if (!user) {
             redirectLogin();
@@ -111,14 +179,14 @@
         setUser(user);
         loadProfile(user);
     });
+    // ── Logout ─────────────────────────────────────────────────────────────────
     const btnLogout = document.getElementById("btn-logout");
     if (btnLogout) {
         btnLogout.addEventListener("click", () => {
-            auth.signOut().then(() => {
-                window.location.href = "index.html";
-            });
+            auth.signOut().then(() => { window.location.href = "index.html"; });
         });
     }
+    // ── Profile save / cancel ──────────────────────────────────────────────────
     const btnProfileSave = document.getElementById("btn-profile-save");
     const btnProfileCancel = document.getElementById("btn-profile-cancel");
     const profileMessage = document.getElementById("profile-message");
@@ -131,7 +199,7 @@
     if (btnProfileSave) {
         btnProfileSave.addEventListener("click", () => {
             if (!currentUser) {
-                showProfileMessage("You must be signed in to save your profile.", true);
+                showProfileMessage("You must be signed in.", true);
                 return;
             }
             const payload = {
@@ -145,18 +213,17 @@
                 bio: document.getElementById("profile-bio").value.trim(),
             };
             btnProfileSave.disabled = true;
-            showProfileMessage("Saving profile\u2026", false);
-            try {
-                localStorage.setItem("eventra_profile_" + currentUser.email, JSON.stringify(payload));
+            showProfileMessage("Saving\u2026", false);
+            db.collection("users").doc(currentUser.uid).set(payload, { merge: true })
+                .then(() => {
                 lastProfileSnapshot = payload;
-                showProfileMessage("Profile saved (demo only, stored in this browser).", false);
-            }
-            catch (_a) {
-                showProfileMessage("Could not save profile in this browser.", true);
-            }
-            finally {
+                showProfileMessage("Profile saved.", false);
                 btnProfileSave.disabled = false;
-            }
+            })
+                .catch((err) => {
+                showProfileMessage(err.message || "Could not save profile.", true);
+                btnProfileSave.disabled = false;
+            });
         });
     }
     if (btnProfileCancel) {
@@ -166,7 +233,7 @@
                 profileMessage.className = "auth-message-inline";
         });
     }
-    // ── Delete account ──────────────────────────────────────────────────────
+    // ── Delete account ─────────────────────────────────────────────────────────
     const btnDelete = document.getElementById("btn-delete-account");
     const deleteReauthWrap = document.getElementById("delete-reauth-wrap");
     const deletePassword = document.getElementById("delete-password");
@@ -196,9 +263,15 @@
                 return;
             }
             btnDelete.disabled = true;
-            auth
-                .reauthenticate(pwd)
-                .then(() => auth.deleteAccount())
+            const uid = currentUser ? currentUser.uid : null;
+            auth.reauthenticate(pwd)
+                .then(() => {
+                if (uid) {
+                    return db.collection("users").doc(uid).delete()
+                        .then(() => auth.deleteAccount());
+                }
+                return auth.deleteAccount();
+            })
                 .then(() => {
                 showDeleteMessage("Account deleted. Redirecting\u2026", false);
                 window.location.href = "index.html";
@@ -221,7 +294,7 @@
         });
     }
 })();
-// ── Password-strength meter ─────────────────────────────────────────────────
+// ── Password-strength meter ──────────────────────────────────────────────────
 window.strength = function (val) {
     const segs = ["s1", "s2", "s3", "s4"].map((id) => document.getElementById(id));
     const hint = document.getElementById("s-hint");

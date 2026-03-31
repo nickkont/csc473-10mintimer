@@ -23,14 +23,16 @@
       Eventra
     </a>
     <div class="nav-actions">
+      <a id="nav-admin-link" class="btn btn-ghost" href="admin.html" style="display:none;">Admin</a>
       <span id="nav-auth">
         <a class="btn btn-ghost" href="login.html">Log in</a>
         <a class="btn btn-primary" href="signup.html">Sign up</a>
       </span>
-      <span id="nav-auth-signed-in" style="display:none;">
-        <a class="btn btn-ghost" href="account.html">Account</a>
-        <a class="btn btn-primary" href="account.html">Profile</a>
-      </span>
+      <a id="nav-user" href="account.html" class="nav-user-chip" style="display:none;" aria-label="Your account">
+        <span class="nav-balance" id="nav-balance">$—</span>
+        <span class="nav-avatar-pill" id="nav-avatar">?</span>
+        <span class="nav-display-name" id="nav-display-name"></span>
+      </a>
     </div>
   </nav>
 </header>
@@ -65,7 +67,7 @@
 
     <div class="cards-scroll" id="cardsScroll">
 
-      <div class="snap-card">
+      <a class="snap-card" href="events.html">
         <div class="slide-card">
           <div>
             <span class="slide-tag ccny">CCNY · ▲ trending</span>
@@ -77,9 +79,9 @@
             <div class="slide-price no"><span class="slide-price-label">NO</span><span class="slide-price-val">$0.38</span></div>
           </div>
         </div>
-      </div>
+      </a>
 
-      <div class="snap-card">
+      <a class="snap-card" href="events.html">
         <div class="slide-card">
           <div>
             <span class="slide-tag sports">Sports · ▲ trending</span>
@@ -91,9 +93,9 @@
             <div class="slide-price no"><span class="slide-price-label">NO</span><span class="slide-price-val">$0.65</span></div>
           </div>
         </div>
-      </div>
+      </a>
 
-      <div class="snap-card">
+      <a class="snap-card" href="events.html">
         <div class="slide-card">
           <div>
             <span class="slide-tag politics">Politics · ▲ trending</span>
@@ -105,16 +107,11 @@
             <div class="slide-price no"><span class="slide-price-label">NO</span><span class="slide-price-val">$0.59</span></div>
           </div>
         </div>
-      </div>
+      </a>
 
     </div>
 
     <div class="slideshow-nav">
-      <div class="slideshow-dots" id="slideDots">
-        <button class="dot active" onclick="scrollToCard(0)"></button>
-        <button class="dot" onclick="scrollToCard(1)"></button>
-        <button class="dot" onclick="scrollToCard(2)"></button>
-      </div>
       <a class="events-cta" href="events.html">View all markets →</a>
     </div>
   </section>
@@ -189,23 +186,12 @@
   </div>
 </footer>
 
-<script>
-  const cardsScroll = document.getElementById('cardsScroll');
-  const dots = document.querySelectorAll('.dot');
-
-  function scrollToCard(n) {
-    const card = cardsScroll.querySelectorAll('.snap-card')[n];
-    card.scrollIntoView({ behavior: 'smooth', inline: 'start', block: 'nearest' });
-    dots.forEach((d, i) => d.classList.toggle('active', i === n));
-  }
-
-  // Update dots on scroll
-  cardsScroll.addEventListener('scroll', () => {
-    const idx = Math.round(cardsScroll.scrollLeft / cardsScroll.offsetWidth);
-    dots.forEach((d, i) => d.classList.toggle('active', i === idx));
-  });
-</script>
+<script src="https://www.gstatic.com/firebasejs/12.10.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.10.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.10.0/firebase-firestore-compat.js"></script>
+<script src="firebase-config.js"></script>
 <script src="dist/auth.js"></script>
+<script src="dist/nav.js"></script>
 <script src="dist/index.js"></script>
 </body>
 </html>

@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Eventra — Admin</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="admin.css" />
+</head>
+<body>
+
+<div class="bg-glow bg-glow-1" aria-hidden="true"></div>
+<div class="bg-glow bg-glow-2" aria-hidden="true"></div>
+
+<header class="site-header">
+  <nav class="nav">
+    <a class="brand" href="index.html">
+      <span class="brand-mark" aria-hidden="true"></span>
+      Eventra
+      <span class="admin-badge">Admin</span>
+    </a>
+    <div class="nav-actions">
+      <a class="btn btn-ghost" href="events.html">Markets</a>
+      <a id="nav-user" href="account.html" class="nav-user-chip" style="display:none;" aria-label="Your account">
+        <span class="nav-balance" id="nav-balance">$—</span>
+        <span class="nav-avatar-pill" id="nav-avatar">?</span>
+        <span class="nav-display-name" id="nav-display-name"></span>
+      </a>
+    </div>
+  </nav>
+</header>
+
+<div id="admin-loading" class="admin-loading-screen">Checking permissions&hellip;</div>
+
+<div id="admin-content" style="display:none;" class="admin-page container">
+
+  <h1 class="admin-page-title">Admin Dashboard</h1>
+
+  <!-- Create Market -->
+  <div class="admin-section">
+    <div class="admin-section-title">Create Market</div>
+    <form id="create-market-form" class="admin-form" novalidate>
+
+      <div class="admin-field">
+        <label>Question</label>
+        <input type="text" id="market-title" placeholder="Will the Knicks win the championship?" required />
+      </div>
+
+      <div class="admin-row">
+        <div class="admin-field">
+          <label>Category</label>
+          <select id="market-category">
+            <option value="ccny">CCNY</option>
+            <option value="sports">Sports</option>
+            <option value="politics">Politics</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+        <div class="admin-field">
+          <label>Closes At</label>
+          <input type="date" id="market-closes" required />
+        </div>
+        <div class="admin-field">
+          <label>YES Price (0–1)</label>
+          <input type="number" id="market-yes-price" min="0.01" max="0.99" step="0.01" value="0.50" required />
+          <span class="admin-hint">NO price = 1 − YES price</span>
+        </div>
+      </div>
+
+      <button type="submit" class="admin-submit-btn">Create Market</button>
+      <div class="admin-msg" id="create-msg"></div>
+    </form>
+  </div>
+
+  <!-- Manage Markets -->
+  <div class="admin-section">
+    <div class="admin-section-title">Manage Markets</div>
+    <div id="admin-markets-list">
+      <p class="admin-loading">Loading&hellip;</p>
+    </div>
+  </div>
+
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/12.10.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.10.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.10.0/firebase-firestore-compat.js"></script>
+<script src="firebase-config.js"></script>
+<script src="dist/auth.js"></script>
+<script src="dist/nav.js"></script>
+<script src="dist/admin.js"></script>
+</body>
+</html>

@@ -18,9 +18,16 @@
         <span class="brand-text">Eventra</span>
       </a>
       <div class="nav-actions">
-        <a class="btn btn-ghost" href="index.html#markets">Markets</a>
-        <a class="btn btn-ghost" href="account.html">Account</a>
-        <a class="btn btn-primary" href="signup.html">Sign up</a>
+        <a id="nav-admin-link" class="btn btn-ghost" href="admin.html" style="display:none;">Admin</a>
+        <span id="nav-auth">
+          <a class="btn btn-ghost" href="index.html">Home</a>
+          <a class="btn btn-primary" href="signup.html">Sign up</a>
+        </span>
+        <a id="nav-user" href="account.html" class="nav-user-chip" style="display:none;" aria-label="Your account">
+          <span class="nav-balance" id="nav-balance">$—</span>
+          <span class="nav-avatar-pill" id="nav-avatar">?</span>
+          <span class="nav-display-name" id="nav-display-name"></span>
+        </a>
       </div>
     </nav>
   </header>
@@ -49,7 +56,12 @@
     </div>
   </main>
 
+  <script src="https://www.gstatic.com/firebasejs/12.10.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/12.10.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/12.10.0/firebase-firestore-compat.js"></script>
+  <script src="firebase-config.js"></script>
   <script src="dist/auth.js"></script>
+  <script src="dist/nav.js"></script>
   <script src="dist/login.js"></script>
 </body>
 </html>

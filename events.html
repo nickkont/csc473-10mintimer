@@ -19,27 +19,28 @@
     <a class="brand" href="index.html">
       <span class="brand-mark" aria-hidden="true"></span>
       Eventra
-      <span class="draft-badge">Draft</span>
     </a>
     <div class="nav-actions">
+      <a id="nav-admin-link" class="btn btn-ghost" href="admin.html" style="display:none;">Admin</a>
       <span id="nav-auth">
         <a class="btn btn-ghost" href="login.html">Log in</a>
         <a class="btn btn-primary" href="signup.html">Sign up</a>
       </span>
-      <span id="nav-auth-signed-in" style="display:none;">
-        <a class="btn btn-ghost" href="account.html">Account</a>
-        <a class="btn btn-primary" href="account.html">Profile</a>
-      </span>
+      <a id="nav-user" href="account.html" class="nav-user-chip" style="display:none;" aria-label="Your account">
+        <span class="nav-balance" id="nav-balance">$—</span>
+        <span class="nav-avatar-pill" id="nav-avatar">?</span>
+        <span class="nav-display-name" id="nav-display-name"></span>
+      </a>
     </div>
   </nav>
 </header>
 
 <div class="cat-bar">
   <div class="cat-bar-inner">
-    <div class="cat-tab active"  onclick="filterCat('all',this)">All markets</div>
-    <div class="cat-tab" onclick="filterCat('ccny',this)">CCNY</div>
-    <div class="cat-tab" onclick="filterCat('sports',this)">Sports</div>
-    <div class="cat-tab" onclick="filterCat('politics',this)">Politics</div>
+    <div class="cat-tab active"    onclick="filterCat('all',this,null)">All markets</div>
+    <div class="cat-tab" onclick="filterCat('ccny',this,null)">CCNY</div>
+    <div class="cat-tab" onclick="filterCat('sports',this,null)">Sports</div>
+    <div class="cat-tab" onclick="filterCat('politics',this,null)">Politics</div>
   </div>
 </div>
 
@@ -55,193 +56,63 @@
 
   <main class="feed">
 
-    <!-- CCNY -->
-    <div class="feed-section" data-cat="ccny">
-      <div class="feed-section-title">CCNY</div>
-
-      <div class="event-card">
-        <div class="event-card-top"><span class="event-tag ccny">CCNY</span><span class="event-dot"></span><span class="event-status up">▲ trending</span></div>
-        <div class="event-question">Will the shuttle bus break down next month?</div>
-        <div class="event-bottom">
-          <span class="event-meta">143 trades · Closes Mar 31</span>
-          <div class="event-prices">
-            <div class="event-price yes"><span class="event-price-label">YES</span><span class="event-prob">$0.62</span></div>
-            <div class="event-price no"><span class="event-price-label">NO</span><span class="event-prob">$0.38</span></div>
-          </div>
-        </div>
-      </div>
-
-      <div class="event-card">
-        <div class="event-card-top"><span class="event-tag ccny">CCNY</span><span class="event-dot"></span><span class="event-status down">▼ cooling</span></div>
-        <div class="event-question">Will Marshak Terrace be completed this year?</div>
-        <div class="event-bottom">
-          <span class="event-meta">88 trades · Closes Dec 20</span>
-          <div class="event-prices">
-            <div class="event-price yes"><span class="event-price-label">YES</span><span class="event-prob">$0.47</span></div>
-            <div class="event-price no"><span class="event-price-label">NO</span><span class="event-prob">$0.53</span></div>
-          </div>
-        </div>
-      </div>
-
-      <div class="event-card">
-        <div class="event-card-top"><span class="event-tag ccny">CCNY</span><span class="event-dot"></span><span class="event-status neutral">• steady</span></div>
-        <div class="event-question">Will CCNY cancel classes due to weather before May?</div>
-        <div class="event-bottom">
-          <span class="event-meta">54 trades · Closes May 1</span>
-          <div class="event-prices">
-            <div class="event-price yes"><span class="event-price-label">YES</span><span class="event-prob">$0.38</span></div>
-            <div class="event-price no"><span class="event-price-label">NO</span><span class="event-prob">$0.62</span></div>
-          </div>
-        </div>
-      </div>
-
-      <div class="event-card">
-        <div class="event-card-top"><span class="event-tag ccny">CCNY</span><span class="event-dot"></span><span class="event-status up">▲ trending</span></div>
-        <div class="event-question">Will the library extend hours during finals week?</div>
-        <div class="event-bottom">
-          <span class="event-meta">97 trades · Closes Apr 28</span>
-          <div class="event-prices">
-            <div class="event-price yes"><span class="event-price-label">YES</span><span class="event-prob">$0.71</span></div>
-            <div class="event-price no"><span class="event-price-label">NO</span><span class="event-prob">$0.29</span></div>
-          </div>
-        </div>
-      </div>
+    <!-- My Positions (shown only when signed in with open positions) -->
+    <div id="positions-section" style="display:none;" class="feed-section">
+      <div class="feed-section-title">My Positions</div>
+      <div id="positions-list"></div>
     </div>
 
-    <!-- Sports -->
-    <div class="feed-section" data-cat="sports">
-      <div class="feed-section-title">Sports</div>
-
-      <div class="event-card">
-        <div class="event-card-top"><span class="event-tag sports">Sports</span><span class="event-dot"></span><span class="event-status up">▲ trending</span></div>
-        <div class="event-question">Will the Knicks win their next 3 games?</div>
-        <div class="event-bottom">
-          <span class="event-meta">210 trades · Closes Apr 5</span>
-          <div class="event-prices">
-            <div class="event-price yes"><span class="event-price-label">YES</span><span class="event-prob">$0.35</span></div>
-            <div class="event-price no"><span class="event-price-label">NO</span><span class="event-prob">$0.65</span></div>
-          </div>
-        </div>
-      </div>
-
-      <div class="event-card">
-        <div class="event-card-top"><span class="event-tag sports">Sports</span><span class="event-dot"></span><span class="event-status down">▼ cooling</span></div>
-        <div class="event-question">Will the Yankees make it to the World Series this year?</div>
-        <div class="event-bottom">
-          <span class="event-meta">312 trades · Closes Oct 31</span>
-          <div class="event-prices">
-            <div class="event-price yes"><span class="event-price-label">YES</span><span class="event-prob">$0.44</span></div>
-            <div class="event-price no"><span class="event-price-label">NO</span><span class="event-prob">$0.56</span></div>
-          </div>
-        </div>
-      </div>
-
-      <div class="event-card">
-        <div class="event-card-top"><span class="event-tag sports">Sports</span><span class="event-dot"></span><span class="event-status up">▲ trending</span></div>
-        <div class="event-question">Will Lionel Messi score in his next MLS match?</div>
-        <div class="event-bottom">
-          <span class="event-meta">189 trades · Closes Apr 12</span>
-          <div class="event-prices">
-            <div class="event-price yes"><span class="event-price-label">YES</span><span class="event-prob">$0.58</span></div>
-            <div class="event-price no"><span class="event-price-label">NO</span><span class="event-prob">$0.42</span></div>
-          </div>
-        </div>
-      </div>
-
-      <div class="event-card">
-        <div class="event-card-top"><span class="event-tag sports">Sports</span><span class="event-dot"></span><span class="event-status neutral">• steady</span></div>
-        <div class="event-question">Will the NBA Finals go to 7 games this year?</div>
-        <div class="event-bottom">
-          <span class="event-meta">401 trades · Closes Jun 20</span>
-          <div class="event-prices">
-            <div class="event-price yes"><span class="event-price-label">YES</span><span class="event-prob">$0.52</span></div>
-            <div class="event-price no"><span class="event-price-label">NO</span><span class="event-prob">$0.48</span></div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Politics -->
-    <div class="feed-section" data-cat="politics">
-      <div class="feed-section-title">Politics</div>
-
-      <div class="event-card">
-        <div class="event-card-top"><span class="event-tag politics">Politics</span><span class="event-dot"></span><span class="event-status up">▲ trending</span></div>
-        <div class="event-question">Will Congress pass a federal budget before the deadline?</div>
-        <div class="event-bottom">
-          <span class="event-meta">278 trades · Closes Sep 30</span>
-          <div class="event-prices">
-            <div class="event-price yes"><span class="event-price-label">YES</span><span class="event-prob">$0.29</span></div>
-            <div class="event-price no"><span class="event-price-label">NO</span><span class="event-prob">$0.71</span></div>
-          </div>
-        </div>
-      </div>
-
-      <div class="event-card">
-        <div class="event-card-top"><span class="event-tag politics">Politics</span><span class="event-dot"></span><span class="event-status down">▼ cooling</span></div>
-        <div class="event-question">Will the NYC mayor's approval rating exceed 50% this quarter?</div>
-        <div class="event-bottom">
-          <span class="event-meta">142 trades · Closes Jun 30</span>
-          <div class="event-prices">
-            <div class="event-price yes"><span class="event-price-label">YES</span><span class="event-prob">$0.33</span></div>
-            <div class="event-price no"><span class="event-price-label">NO</span><span class="event-prob">$0.67</span></div>
-          </div>
-        </div>
-      </div>
-
-      <div class="event-card">
-        <div class="event-card-top"><span class="event-tag politics">Politics</span><span class="event-dot"></span><span class="event-status neutral">• steady</span></div>
-        <div class="event-question">Will student loan forgiveness pass before end of year?</div>
-        <div class="event-bottom">
-          <span class="event-meta">509 trades · Closes Dec 31</span>
-          <div class="event-prices">
-            <div class="event-price yes"><span class="event-price-label">YES</span><span class="event-prob">$0.18</span></div>
-            <div class="event-price no"><span class="event-price-label">NO</span><span class="event-prob">$0.82</span></div>
-          </div>
-        </div>
-      </div>
-
-      <div class="event-card">
-        <div class="event-card-top"><span class="event-tag politics">Politics</span><span class="event-dot"></span><span class="event-status up">▲ trending</span></div>
-        <div class="event-question">Will there be a government shutdown before July?</div>
-        <div class="event-bottom">
-          <span class="event-meta">367 trades · Closes Jul 1</span>
-          <div class="event-prices">
-            <div class="event-price yes"><span class="event-price-label">YES</span><span class="event-prob">$0.41</span></div>
-            <div class="event-price no"><span class="event-price-label">NO</span><span class="event-prob">$0.59</span></div>
-          </div>
-        </div>
-      </div>
+    <!-- Dynamic market cards injected here -->
+    <div id="markets-feed">
+      <p class="markets-loading">Loading markets&hellip;</p>
     </div>
 
   </main>
 </div>
 
+<!-- Trade Modal -->
+<div id="trade-modal" class="trade-modal-overlay" style="display:none;" role="dialog" aria-modal="true">
+  <div class="trade-modal-card">
+    <div class="trade-modal-header">
+      <div class="trade-modal-title" id="modal-market-title">Market</div>
+      <button class="trade-modal-close" id="modal-close-btn" aria-label="Close">&times;</button>
+    </div>
+
+    <div class="trade-modal-meta">
+      <span class="modal-side-badge" id="modal-side">YES</span>
+      <span class="modal-price-label" id="modal-price">$0.00 per share</span>
+    </div>
+
+    <div class="trade-modal-balance">
+      Balance: <strong id="modal-user-balance">$—</strong>
+    </div>
+
+    <div class="trade-modal-field">
+      <label for="modal-shares">Shares</label>
+      <input type="number" id="modal-shares" min="1" value="1" />
+    </div>
+
+    <div class="trade-modal-cost">
+      Total cost: <strong id="modal-cost">$0.00</strong>
+    </div>
+
+    <button class="trade-modal-buy-btn" id="modal-buy-btn">Buy</button>
+    <div class="modal-msg" id="modal-msg"></div>
+  </div>
+</div>
+
 <footer class="footer">
-  <div class="footer-inner">
-    <span>Eventra · HTML/CSS class project</span>
-    <span>No backend, no API, no problems.</span>
+  <div class="container footer-inner">
+    <span>Eventra · Prediction Markets</span>
   </div>
 </footer>
 
+<script src="https://www.gstatic.com/firebasejs/12.10.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.10.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.10.0/firebase-firestore-compat.js"></script>
+<script src="firebase-config.js"></script>
 <script src="dist/auth.js"></script>
-<script>
-  function filterCat(cat, catTabEl, sidebarEl) {
-    document.querySelectorAll('.cat-tab').forEach(t => t.classList.remove('active'));
-    document.querySelectorAll('.sidebar-link').forEach(t => t.classList.remove('active'));
-
-    if (catTabEl) catTabEl.classList.add('active');
-    if (sidebarEl) sidebarEl.classList.add('active');
-
-    // sync both when either is clicked
-    const idx = ['all','ccny','sports','politics'].indexOf(cat);
-    document.querySelectorAll('.cat-tab')[idx]?.classList.add('active');
-    document.querySelectorAll('.sidebar-link')[idx]?.classList.add('active');
-
-    document.querySelectorAll('.feed-section').forEach(s => {
-      s.style.display = (cat === 'all' || s.dataset.cat === cat) ? 'block' : 'none';
-    });
-  }
-</script>
+<script src="dist/nav.js"></script>
+<script src="dist/events.js"></script>
 </body>
 </html>

@@ -1,17 +1,19 @@
 /**
  * Eventra — Global type declarations
- * Ambient declarations shared across all TypeScript source files.
  */
 
-interface DemoUser {
+declare const firebase: any;
+
+interface FirebaseUser {
   uid: string;
-  email: string;
-  password: string;
-  displayName: string;
+  email: string | null;
+  displayName: string | null;
 }
 
+type DemoUser = FirebaseUser;
+
 interface AuthResult {
-  user: DemoUser;
+  user: FirebaseUser;
 }
 
 interface ProfileData {
@@ -25,10 +27,39 @@ interface ProfileData {
   bio: string;
 }
 
+interface WalletTransaction {
+  id: string;
+  type: string;
+  amount: number;
+  description: string;
+  balance: number;
+  timestamp: any;
+}
+
+interface Market {
+  id: string;
+  title: string;
+  category: string;
+  closesAt: any;
+  status: "open" | "resolved";
+  outcome: "yes" | "no" | null;
+  yesPrice: number;
+  noPrice: number;
+  totalTrades: number;
+  createdBy: string;
+  createdAt: any;
+}
+
+interface Position {
+  marketId: string;
+  yesShares: number;
+  noShares: number;
+}
+
 interface EventraAuthAPI {
-  getAuth(): null;
-  getCurrentUser(): DemoUser | null;
-  onAuthStateChanged(callback: (user: DemoUser | null) => void): () => void;
+  getAuth(): any;
+  getCurrentUser(): FirebaseUser | null;
+  onAuthStateChanged(callback: (user: FirebaseUser | null) => void): () => void;
   signUp(email: string, password: string, displayName?: string | null): Promise<AuthResult>;
   signIn(email: string, password: string): Promise<AuthResult>;
   signOut(): Promise<void>;

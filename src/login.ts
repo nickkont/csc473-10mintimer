@@ -1,6 +1,5 @@
 /**
  * Eventra — Login page script
- * Handles form submission and delegates to EventraAuth.signIn.
  */
 ((): void => {
   const form = document.getElementById("login-form") as HTMLFormElement | null;
@@ -34,10 +33,15 @@
         window.location.href = "account.html";
       })
       .catch((err: Error & { code?: string }): void => {
-        if (err.code === "auth/configuration-not-found") {
-          showMessage(
-            "Auth not set up. In Firebase Console: Build \u2192 Authentication \u2192 Get started, then enable Email/Password under Sign-in method."
-          );
+        const code = (err as any).code as string | undefined;
+        if (code === "auth/user-not-found" || code === "auth/wrong-password" || code === "auth/invalid-credential") {
+          showMessage("Incorrect email or password.");
+        } else if (code === "auth/too-many-requests") {
+          showMessage("Too many failed attempts. Please try again later.");
+        } else if (code === "auth/user-disabled") {
+          showMessage("This account has been disabled.");
+        } else if (code === "auth/configuration-not-found") {
+          showMessage("Auth not configured. Enable Email/Password in Firebase Console \u2192 Authentication.");
         } else {
           showMessage(err.message || "Login failed.");
         }
