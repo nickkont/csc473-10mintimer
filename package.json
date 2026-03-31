@@ -1,5 +1,6 @@
 {
   "scripts": {
+    "build:react": "cd react-app && npx vite build",
     "build": "tsc",
     "cloc": "cloc . --exclude-dir=node_modules"
   },

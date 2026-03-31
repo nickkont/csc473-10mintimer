@@ -56,7 +56,7 @@
       })
       .then((): void => {
         showMessage("Account created. Redirecting\u2026", "success");
-        window.location.href = "account.html";
+        window.location.href = "react-dist/index.html#/account";
       })
       .catch((err: Error & { code?: string }): void => {
         const code = (err as any).code as string | undefined;

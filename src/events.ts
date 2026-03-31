@@ -154,7 +154,8 @@
   // ── Open trade modal ─────────────────────────────────────────────────────────
   (window as any).openTrade = function (marketId: string, side: "yes" | "no"): void {
     if (!currentUser) {
-      window.location.href = "login.html?redirect=events.html";
+      window.location.href =
+        "login.html?redirect=" + encodeURIComponent("react-dist/index.html#/events");
       return;
     }
     const market = activeMarkets.find((m: Market): boolean => m.id === marketId);
@@ -280,20 +281,29 @@
           const outcome  = market ? market.outcome : null;
 
           let claimBtn = "";
+          let claimedLine = "";
           if (resolved && outcome) {
             const winShares = outcome === "yes" ? (pos.yesShares || 0) : (pos.noShares || 0);
-            if (winShares > 0) {
-              claimBtn = '<button class="claim-btn" onclick="claimPayout(\'' + pos.marketId + '\',$' + winShares + ')">Claim $' + winShares.toFixed(2) + "</button>";
+            const alreadyClaimed = pos.payoutClaimed === true;
+            if (alreadyClaimed && typeof pos.claimedAmount === "number") {
+              claimedLine =
+                '<span class="claimed-label">Claimed $' + pos.claimedAmount.toFixed(2) + "</span>";
+            } else if (winShares > 0) {
+              claimBtn =
+                '<button type="button" class="claim-btn" data-claim-market="' + pos.marketId + '">Claim $' +
+                winShares.toFixed(2) +
+                "</button>";
             }
           }
 
           return (
-            '<div class="position-row">' +
+            '<div class="position-row" data-market-id="' + pos.marketId + '">' +
               '<div class="pos-title">' + title + "</div>" +
               '<div class="pos-shares">' +
                 (pos.yesShares > 0 ? '<span class="pos-yes">YES ×' + pos.yesShares + "</span>" : "") +
                 (pos.noShares  > 0 ? '<span class="pos-no">NO ×' + pos.noShares   + "</span>" : "") +
               "</div>" +
+              claimedLine +
               claimBtn +
             "</div>"
           );
@@ -305,40 +315,73 @@
       });
   }
 
-  // ── Claim payout ─────────────────────────────────────────────────────────────
-  (window as any).claimPayout = function (marketId: string, winShares: number): void {
+  // ── Claim payout (delegated click — avoids broken onclick strings) ─────────
+  if (posList) {
+    posList.addEventListener("click", (e: MouseEvent): void => {
+      const btn = (e.target as HTMLElement).closest("[data-claim-market]") as HTMLButtonElement | null;
+      if (!btn || !currentUser) return;
+      const marketId = btn.getAttribute("data-claim-market");
+      if (!marketId) return;
+      claimPayout(marketId);
+    });
+  }
+
+  function claimPayout(marketId: string): void {
     if (!currentUser) return;
-    const uid      = currentUser.uid;
-    const userRef  = db.collection("users").doc(uid);
-    const posRef   = db.collection("users").doc(uid).collection("positions").doc(marketId);
-    const txRef    = db.collection("users").doc(uid).collection("transactions").doc();
-    const market   = activeMarkets.find((m: Market): boolean => m.id === marketId);
-    const payout   = parseFloat(winShares.toFixed(2));
+    const uid       = currentUser.uid;
+    const userRef   = db.collection("users").doc(uid);
+    const posRef    = db.collection("users").doc(uid).collection("positions").doc(marketId);
+    const marketRef = db.collection("markets").doc(marketId);
+    const txRef     = db.collection("users").doc(uid).collection("transactions").doc();
 
     db.runTransaction((t: any): Promise<number> => {
-      return Promise.all([userRef.get(), posRef.get()])
-        .then(([userSnap, posSnap]: [any, any]): number => {
+      return Promise.all([userRef.get(), posRef.get(), marketRef.get()])
+        .then(([userSnap, posSnap, marketSnap]: [any, any, any]): number => {
           if (!posSnap.exists) throw new Error("Position not found.");
+          if (!marketSnap.exists) throw new Error("Market not found.");
+          const mdata = marketSnap.data();
+          if (mdata.status !== "resolved" || !mdata.outcome) {
+            throw new Error("Market is not resolved yet.");
+          }
+          const posData = posSnap.data();
+          if (posData.payoutClaimed === true) throw new Error("Payout already claimed.");
+          const outcome = mdata.outcome as "yes" | "no";
+          const winShares = outcome === "yes" ? (posData.yesShares || 0) : (posData.noShares || 0);
+          if (winShares <= 0) throw new Error("No winning shares to claim.");
+          const payout = parseFloat(winShares.toFixed(2));
           const balance: number = userSnap.exists ? (userSnap.data().walletBalance || 0) : 0;
           const newBalance = parseFloat((balance + payout).toFixed(2));
+          const title = mdata.title || marketId;
+
+          const posUpdate: Record<string, unknown> = {
+            payoutClaimed: true,
+            claimedAmount: payout,
+            claimedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          };
+          if (outcome === "yes") posUpdate.yesShares = 0;
+          else posUpdate.noShares = 0;
+
           t.update(userRef, { walletBalance: newBalance });
-          t.delete(posRef);
+          t.set(posRef, posUpdate, { merge: true });
           t.set(txRef, {
             type: "payout",
             amount: payout,
-            description: "Payout from: " + (market ? market.title : marketId),
+            description: "Payout from: " + title,
             balance: newBalance,
             timestamp: firebase.firestore.FieldValue.serverTimestamp(),
           });
           return newBalance;
         });
     })
-    .then((newBalance: number): void => {
-      currentUserBalance = newBalance;
-      const navBal = document.getElementById("nav-balance") as HTMLElement | null;
-      if (navBal) navBal.textContent = "$" + newBalance.toFixed(2);
-      loadMarkets();
-    })
-    .catch((err: Error): void => { alert(err.message || "Claim failed."); });
-  };
+      .then((newBalance: number): void => {
+        currentUserBalance = newBalance;
+        const navBal = document.getElementById("nav-balance") as HTMLElement | null;
+        if (navBal) navBal.textContent = "$" + newBalance.toFixed(2);
+        if (currentUser) loadPositions(currentUser.uid, activeMarkets);
+        loadMarkets();
+      })
+      .catch((err: Error): void => {
+        alert(err.message || "Claim failed.");
+      });
+  }
 })();

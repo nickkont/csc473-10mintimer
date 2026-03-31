@@ -10,7 +10,10 @@
   <link rel="stylesheet" href="styles.css" />
   <link rel="stylesheet" href="auth.css" />
 </head>
-<body class="auth-page">
+<body>
+<div class="bg-glow bg-glow-1" aria-hidden="true"></div>
+<div class="bg-glow bg-glow-2" aria-hidden="true"></div>
+
   <header class="site-header">
     <nav class="nav container">
       <a class="brand" href="index.html">
@@ -18,12 +21,13 @@
         <span class="brand-text">Eventra</span>
       </a>
       <div class="nav-actions">
+        <a class="btn btn-ghost" href="react-dist/index.html#/social">Social</a>
         <a id="nav-admin-link" class="btn btn-ghost" href="admin.html" style="display:none;">Admin</a>
         <span id="nav-auth">
           <a class="btn btn-ghost" href="index.html">Home</a>
           <a class="btn btn-primary" href="signup.html">Sign up</a>
         </span>
-        <a id="nav-user" href="account.html" class="nav-user-chip" style="display:none;" aria-label="Your account">
+        <a id="nav-user" href="react-dist/index.html#/account" class="nav-user-chip" style="display:none;" aria-label="Your account">
           <span class="nav-balance" id="nav-balance">$—</span>
           <span class="nav-avatar-pill" id="nav-avatar">?</span>
           <span class="nav-display-name" id="nav-display-name"></span>
@@ -32,7 +36,7 @@
     </nav>
   </header>
 
-  <main>
+  <main class="auth-main" style="min-height:calc(100vh - 64px);display:flex;align-items:center;justify-content:center;padding:2rem 1rem;">
     <div class="auth-card">
       <h1>Log in</h1>
       <p class="sub">Sign in to your Eventra account.</p>

@@ -54,6 +54,9 @@ interface Position {
   marketId: string;
   yesShares: number;
   noShares: number;
+  payoutClaimed?: boolean;
+  claimedAmount?: number;
+  claimedAt?: any;
 }
 
 interface EventraAuthAPI {

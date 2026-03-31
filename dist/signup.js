@@ -52,7 +52,7 @@
         })
             .then(() => {
             showMessage("Account created. Redirecting\u2026", "success");
-            window.location.href = "account.html";
+            window.location.href = "react-dist/index.html#/account";
         })
             .catch((err) => {
             const code = err.code;

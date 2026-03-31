@@ -36,6 +36,7 @@
         const navBalance = getEl("nav-balance");
         const navName = getEl("nav-display-name");
         const navAdmin = getEl("nav-admin-link");
+        const navAccountLink = getEl("nav-account-link");
         if (!user) {
             if (navAuth)
                 navAuth.style.display = "";
@@ -43,12 +44,18 @@
                 navUser.style.display = "none";
             if (navAdmin)
                 navAdmin.style.display = "none";
+            if (navAccountLink) {
+                navAccountLink.href =
+                    "login.html?redirect=" + encodeURIComponent("react-dist/index.html#/account");
+            }
             return;
         }
         if (navAuth)
             navAuth.style.display = "none";
         if (navUser)
             navUser.style.display = "";
+        if (navAccountLink)
+            navAccountLink.href = "react-dist/index.html#/account";
         setInitials(navAvatar, user);
         if (navName) {
             navName.textContent = user.displayName

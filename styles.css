@@ -795,6 +795,17 @@ a { color: inherit; text-decoration: none; }
 }
 .claim-btn:hover { background: rgba(34,197,94,0.2); }
 
+.claimed-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: rgba(255,255,255,0.55);
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.04);
+  white-space: nowrap;
+}
+
 /* ── Trade Modal ── */
 .trade-modal-overlay {
   position: fixed;

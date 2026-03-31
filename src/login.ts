@@ -8,6 +8,24 @@
 
   if (!form || !btn || !msg) return;
 
+  function getPostLoginRedirect(): string {
+    const params = new URLSearchParams(window.location.search);
+    const redirect = params.get("redirect")?.trim();
+    const fallback = "react-dist/index.html#/account";
+    if (!redirect) return fallback;
+    // Relative *.html paths, or react SPA bundle with optional hash route
+    if (!/^[\w./-]+\.html(?:#[\w./-]*)?$/.test(redirect)) return fallback;
+    return redirect;
+  }
+
+  if (typeof window.EventraAuth !== "undefined") {
+    window.EventraAuth.onAuthStateChanged((user): void => {
+      if (user) {
+        window.location.href = getPostLoginRedirect();
+      }
+    });
+  }
+
   function showMessage(text: string, type?: string): void {
     if (!msg) return;
     msg.textContent = text;
@@ -30,7 +48,7 @@
     window.EventraAuth.signIn(email, password)
       .then((): void => {
         showMessage("Signed in. Redirecting\u2026", "success");
-        window.location.href = "account.html";
+        window.location.href = getPostLoginRedirect();
       })
       .catch((err: Error & { code?: string }): void => {
         const code = (err as any).code as string | undefined;
