@@ -1,4 +1,5 @@
 node_modules
+react-dist
 firebase-config.js
 firebase-service-account.json
 .claude

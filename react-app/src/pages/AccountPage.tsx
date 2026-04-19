@@ -13,10 +13,11 @@ import {
   writeBatch,
 } from "firebase/firestore";
 import React, { useCallback, useEffect, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import AppLayout from "../components/AppLayout";
 import { useAuth } from "../context/AuthContext";
 import { auth, db } from "../firebase";
-import { loginWithRedirect, siteHomeHref, siteRootPage } from "../lib/siteUrls";
+import { loginWithRedirect } from "../lib/siteUrls";
 import "../../../styles.css";
 import "../../../account.css";
 
@@ -55,6 +56,7 @@ function strength(val: string): { label: string; score: number } {
 
 export default function AccountPage(): JSX.Element {
   const { user, loading } = useAuth();
+  const navigate = useNavigate();
   const [profile, setProfile] = useState<ProfileData>(emptyProfile);
   const [email, setEmail] = useState("");
   const [snapshot, setSnapshot] = useState<ProfileData | null>(null);
@@ -70,10 +72,8 @@ export default function AccountPage(): JSX.Element {
 
   useEffect(() => {
     if (loading) return;
-    if (!user) {
-      window.location.href = loginWithRedirect("/account");
-    }
-  }, [loading, user]);
+    if (!user) navigate(loginWithRedirect("/account"), { replace: true });
+  }, [loading, user, navigate]);
 
   const loadWallet = useCallback(async (uid: string): Promise<void> => {
     const uref = doc(db, "users", uid);
@@ -193,7 +193,7 @@ export default function AccountPage(): JSX.Element {
       .then(() => deleteDoc(doc(db, "users", user.uid)))
       .then(() => deleteUser(user))
       .then(() => {
-        window.location.href = "../index.html";
+        navigate("/", { replace: true });
       })
       .catch((e) => {
         setDeleteMsg((e as Error).message || "Could not delete account.");
@@ -208,7 +208,7 @@ export default function AccountPage(): JSX.Element {
 
   if (loading || !user) {
     return (
-      <AppLayout active="account">
+      <AppLayout>
         <div className="page container">
           <p className="markets-loading">Loading…</p>
         </div>
@@ -217,7 +217,7 @@ export default function AccountPage(): JSX.Element {
   }
 
   return (
-    <AppLayout active="account">
+    <AppLayout>
       <div className="page">
         <div className="container">
           <div className="page-title">Account Settings</div>
@@ -319,9 +319,9 @@ export default function AccountPage(): JSX.Element {
             <div className="section-head">Wallet</div>
             <div className="section-body">
               <p className="wallet-redirect-note">
-                <a href={siteRootPage("wallet.html")} className="wallet-redirect-link">
+                <Link to="/wallet" className="wallet-redirect-link">
                   Open wallet dashboard →
-                </a>
+                </Link>
                 <span className="wallet-redirect-hint">Deposits, withdrawals, and full activity</span>
               </p>
               <div className="wallet-header">

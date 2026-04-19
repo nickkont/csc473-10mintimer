@@ -3,7 +3,6 @@ import { onAuthStateChanged, signOut } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { auth, db } from "../firebase";
-import { siteHomeHref } from "../lib/siteUrls";
 
 type AuthCtx = {
   user: User | null;
@@ -50,7 +49,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }): JSX.E
       role,
       loading,
       signOutApp: () => signOut(auth).then(() => {
-        window.location.href = siteHomeHref();
+        window.location.hash = "/";
       }),
     }),
     [user, balance, role, loading]

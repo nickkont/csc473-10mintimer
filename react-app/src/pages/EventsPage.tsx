@@ -8,6 +8,7 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 import React, { useCallback, useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import AppLayout from "../components/AppLayout";
 import { useAuth } from "../context/AuthContext";
 import { db } from "../firebase";
@@ -47,6 +48,7 @@ function closesLabel(m: Market): string {
 
 export default function EventsPage(): JSX.Element {
   const { user, balance: navBalance } = useAuth();
+  const navigate = useNavigate();
   const [markets, setMarkets] = useState<Market[]>([]);
   const [positions, setPositions] = useState<Array<PositionRow & { title: string; market?: Market }>>([]);
   const [loading, setLoading] = useState(true);
@@ -101,7 +103,7 @@ export default function EventsPage(): JSX.Element {
 
   const openTrade = (marketId: string, side: "yes" | "no"): void => {
     if (!user) {
-      window.location.href = loginWithRedirect("/events");
+      navigate(loginWithRedirect("/events"));
       return;
     }
     const market = markets.find((m) => m.id === marketId);
@@ -263,7 +265,7 @@ export default function EventsPage(): JSX.Element {
   }
 
   return (
-    <AppLayout active="events">
+    <AppLayout>
       <div className="cat-bar">
         <div className="cat-bar-inner">
           <div className={"cat-tab" + (catFilter === "all" ? " active" : "")} onClick={() => filterCat("all")}>

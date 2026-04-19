@@ -9,6 +9,7 @@ import {
 } from "firebase/firestore";
 import type { User } from "firebase/auth";
 import React, { useCallback, useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import AppLayout from "../components/AppLayout";
 import { auth, db } from "../firebase";
 import { loginWithRedirect } from "../lib/siteUrls";
@@ -84,6 +85,7 @@ function getAuthorName(u: User | null): string {
 }
 
 export default function SocialPage(): JSX.Element {
+  const navigate = useNavigate();
   const [posts, setPosts] = useState<PostVM[]>([]);
   const [activeFilter, setActiveFilter] = useState<TimeFilter>("Now");
   const [user, setUser] = useState<User | null>(null);
@@ -147,9 +149,7 @@ export default function SocialPage(): JSX.Element {
     if (!user) {
       setMsg("Log in to post. Redirecting…");
       setMsgOk(false);
-      setTimeout(() => {
-        window.location.href = loginWithRedirect("/social");
-      }, 600);
+      setTimeout(() => navigate(loginWithRedirect("/social")), 600);
       return;
     }
     void addDoc(collection(db, "socialPosts"), {
@@ -195,7 +195,7 @@ export default function SocialPage(): JSX.Element {
   };
 
   return (
-    <AppLayout active="social">
+    <AppLayout>
       <main className="page">
         <div className="container">
           <div className="post-section">

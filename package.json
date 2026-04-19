@@ -1,13 +1,6 @@
 {
   "scripts": {
-    "build:react": "cd react-app && npx vite build",
-    "build": "tsc",
-    "cloc": "cloc . --exclude-dir=node_modules"
-  },
-  "devDependencies": {
-    "typescript": "^5.4.0"
-  },
-  "dependencies": {
-    "firebase": "^12.10.0"
+    "build": "cd react-app && npm run build",
+    "dev": "cd react-app && npm run dev"
   }
 }
