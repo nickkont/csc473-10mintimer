@@ -32,7 +32,7 @@ export default function SiteHeader(): JSX.Element {
           ) : null}
           {user ? (
             <>
-              <Link to="/account" className="nav-user-chip" aria-label="Your account">
+              <Link to={`/profile/${user.uid}`} className="nav-user-chip" aria-label="Your profile">
                 <span className="nav-balance">${balance.toFixed(2)}</span>
                 <span className="nav-avatar-pill">{initials(user)}</span>
                 <span className="nav-display-name">{user.displayName || ""}</span>
