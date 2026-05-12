@@ -1,11 +1,45 @@
-import React from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import AppLayout from "../components/AppLayout";
 import { useAuth } from "../context/AuthContext";
+import { listMarkets, MarketDoc } from "../api/markets";
 import "../../../styles.css";
+
+function closesLabel(m: MarketDoc): string {
+  const ca = m.closesAt;
+  if (!ca) return "—";
+  return new Date(ca.seconds * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+const KNOWN_TAGS = new Set(["ccny", "sports", "politics"]);
+function tagClass(category: string): string {
+  return KNOWN_TAGS.has(category) ? category : "other";
+}
 
 export default function HomePage(): JSX.Element {
   const { user } = useAuth();
+  const [featured, setFeatured] = useState<MarketDoc[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async (silent = false): Promise<void> => {
+    if (!silent) setLoading(true);
+    try {
+      const all = await listMarkets();
+      const open = all.filter((m) => m.status !== "resolved");
+      const sorted = [...open].sort((a, b) => (b.totalTrades || 0) - (a.totalTrades || 0));
+      setFeatured(sorted.slice(0, 3));
+    } catch {
+      if (!silent) setFeatured([]);
+    } finally {
+      if (!silent) setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+    const interval = setInterval(() => void load(true), 10000);
+    return () => clearInterval(interval);
+  }, [load]);
 
   return (
     <AppLayout>
@@ -46,45 +80,35 @@ export default function HomePage(): JSX.Element {
         <section id="featured" className="slideshow-section container">
           <div className="slideshow-label">Featured markets</div>
           <div className="cards-scroll">
-            <Link className="snap-card" to="/events">
-              <div className="slide-card">
-                <div>
-                  <span className="slide-tag ccny">CCNY · ▲ trending</span>
-                  <div className="slide-question">Will the shuttle bus break down next month?</div>
-                  <div className="slide-meta">143 trades · Closes Mar 31</div>
-                </div>
-                <div className="slide-prices">
-                  <div className="slide-price yes"><span className="slide-price-label">YES</span><span className="slide-price-val">$0.62</span></div>
-                  <div className="slide-price no"><span className="slide-price-label">NO</span><span className="slide-price-val">$0.38</span></div>
-                </div>
-              </div>
-            </Link>
-            <Link className="snap-card" to="/events">
-              <div className="slide-card">
-                <div>
-                  <span className="slide-tag sports">Sports · ▲ trending</span>
-                  <div className="slide-question">Will the Knicks win their next 3 games?</div>
-                  <div className="slide-meta">210 trades · Closes Apr 5</div>
-                </div>
-                <div className="slide-prices">
-                  <div className="slide-price yes"><span className="slide-price-label">YES</span><span className="slide-price-val">$0.35</span></div>
-                  <div className="slide-price no"><span className="slide-price-label">NO</span><span className="slide-price-val">$0.65</span></div>
-                </div>
-              </div>
-            </Link>
-            <Link className="snap-card" to="/events">
-              <div className="slide-card">
-                <div>
-                  <span className="slide-tag politics">Politics · ▲ trending</span>
-                  <div className="slide-question">Will there be a government shutdown before July?</div>
-                  <div className="slide-meta">367 trades · Closes Jul 1</div>
-                </div>
-                <div className="slide-prices">
-                  <div className="slide-price yes"><span className="slide-price-label">YES</span><span className="slide-price-val">$0.41</span></div>
-                  <div className="slide-price no"><span className="slide-price-label">NO</span><span className="slide-price-val">$0.59</span></div>
-                </div>
-              </div>
-            </Link>
+            {loading && featured.length === 0 ? (
+              <p className="markets-loading">Loading featured markets…</p>
+            ) : featured.length === 0 ? (
+              <p className="markets-loading">No open markets right now.</p>
+            ) : (
+              featured.map((m) => (
+                <Link key={m.id} className="snap-card" to={`/market/${m.id}`}>
+                  <div className="slide-card">
+                    <div>
+                      <span className={"slide-tag " + tagClass(m.category)}>
+                        {(m.category || "other").toUpperCase()} · ▲ trending
+                      </span>
+                      <div className="slide-question">{m.title}</div>
+                      <div className="slide-meta">{m.totalTrades} trades · Closes {closesLabel(m)}</div>
+                    </div>
+                    <div className="slide-prices">
+                      <div className="slide-price yes">
+                        <span className="slide-price-label">YES</span>
+                        <span className="slide-price-val">${m.yesPrice.toFixed(2)}</span>
+                      </div>
+                      <div className="slide-price no">
+                        <span className="slide-price-label">NO</span>
+                        <span className="slide-price-val">${m.noPrice.toFixed(2)}</span>
+                      </div>
+                    </div>
+                  </div>
+                </Link>
+              ))
+            )}
           </div>
           <div className="slideshow-nav">
             <Link className="events-cta" to="/events">View all markets →</Link>
