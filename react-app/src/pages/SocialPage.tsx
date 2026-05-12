@@ -1,17 +1,10 @@
 import { onAuthStateChanged } from "firebase/auth";
-import {
-  addDoc,
-  collection,
-  onSnapshot,
-  orderBy,
-  query,
-  serverTimestamp,
-} from "firebase/firestore";
 import type { User } from "firebase/auth";
 import React, { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import AppLayout from "../components/AppLayout";
-import { auth, db } from "../firebase";
+import { auth } from "../firebase";
+import { createPost, listPosts } from "../api/posts";
 import { loginWithRedirect } from "../lib/siteUrls";
 import "../../../styles.css";
 import "../../../socialv2.css";
@@ -45,9 +38,9 @@ function formatTime(minutesAgo: number): string {
   return `${Math.floor(minutesAgo / 1440)}d`;
 }
 
-function timestampToMinutesAgo(ts: { toDate?: () => Date } | null | undefined): number {
-  if (!ts || typeof ts.toDate !== "function") return 0;
-  const diffMs = Date.now() - ts.toDate().getTime();
+function timestampToMinutesAgo(ts: { seconds?: number } | null | undefined): number {
+  if (!ts || typeof ts.seconds !== "number") return 0;
+  const diffMs = Date.now() - ts.seconds * 1000;
   return Math.max(0, Math.floor(diffMs / 60000));
 }
 
@@ -105,31 +98,32 @@ export default function SocialPage(): JSX.Element {
     }
   }, []);
 
-  useEffect(() => {
-    const q = query(collection(db, "socialPosts"), orderBy("createdAt", "desc"));
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
-        const list: PostVM[] = snap.docs.map((docSnap) => {
-          const data = docSnap.data();
-          return {
-            id: docSnap.id,
-            name: String(data.authorName || "Anonymous"),
-            initials: String(data.authorInitials || "?"),
-            minutesAgo: timestampToMinutesAgo(data.createdAt),
-            text: String(data.text || ""),
-            image: data.image ? String(data.image) : null,
-            liked: false,
-            likes: Number(data.likes || 0),
-            comments: Number(data.comments || 0),
-          };
-        });
-        setPosts(list);
-      },
-      () => setMsg("Could not load social posts right now.")
-    );
-    return () => unsub();
+  const loadPosts = useCallback(async (): Promise<void> => {
+    try {
+      const list = await listPosts(100);
+      setPosts(
+        list.map((p) => ({
+          id: p.id,
+          name: String(p.authorName || "Anonymous"),
+          initials: String(p.authorInitials || "?"),
+          minutesAgo: timestampToMinutesAgo(p.createdAt),
+          text: String(p.text || ""),
+          image: p.image ?? null,
+          liked: false,
+          likes: Number(p.likes || 0),
+          comments: Number(p.comments || 0),
+        }))
+      );
+    } catch {
+      setMsg("Could not load social posts right now.");
+    }
   }, []);
+
+  useEffect(() => {
+    void loadPosts();
+    const interval = setInterval(() => void loadPosts(), 15000);
+    return () => clearInterval(interval);
+  }, [loadPosts]);
 
   const visible = filterPosts(posts, activeFilter);
 
@@ -152,24 +146,22 @@ export default function SocialPage(): JSX.Element {
       setTimeout(() => navigate(loginWithRedirect("/social")), 600);
       return;
     }
-    void addDoc(collection(db, "socialPosts"), {
-      uid: user.uid,
-      authorName: getAuthorName(user),
-      authorInitials: getInitials(user),
+    void createPost({
       text: t,
       image: pendingImage || null,
-      likes: 0,
-      comments: 0,
-      createdAt: serverTimestamp(),
+      authorName: getAuthorName(user),
+      authorInitials: getInitials(user),
     })
       .then(() => {
         setText("");
         setPendingImage(null);
         setMsg("Posted successfully.");
         setMsgOk(true);
+        void loadPosts();
       })
       .catch((e) => {
-        setMsg((e as Error).message || "Could not post right now.");
+        const err = e as { response?: { data?: { error?: string } }; message?: string };
+        setMsg(err.response?.data?.error ?? err.message ?? "Could not post right now.");
         setMsgOk(false);
       });
   };
@@ -325,11 +317,6 @@ export default function SocialPage(): JSX.Element {
         </div>
       </main>
 
-      <footer className="footer">
-        <div className="footer-inner">
-          <span>Eventra · Community</span>
-        </div>
-      </footer>
     </AppLayout>
   );
 }

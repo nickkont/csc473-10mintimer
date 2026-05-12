@@ -197,3 +197,98 @@
 @media (max-width: 700px) {
   .admin-row { grid-template-columns: 1fr; }
 }
+
+/* ── Admin market actions (Resolve / Delete) ── */
+.admin-market-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+  align-items: center;
+}
+
+.admin-resolve-btn,
+.admin-delete-btn {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 7px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: transform 0.12s ease, background 0.15s ease, opacity 0.15s ease, box-shadow 0.15s ease;
+  border: 1px solid transparent;
+  background: rgba(255,255,255,0.06);
+  color: rgba(255,255,255,0.85);
+}
+
+.admin-resolve-btn.yes {
+  border-color: rgba(34,197,94,0.4);
+  background: rgba(34,197,94,0.08);
+  color: #22c55e;
+}
+.admin-resolve-btn.yes:hover:not(:disabled) {
+  background: rgba(34,197,94,0.2);
+  box-shadow: 0 0 0 3px rgba(34,197,94,0.18);
+  transform: translateY(-1px);
+}
+
+.admin-resolve-btn.no {
+  border-color: rgba(239,68,68,0.4);
+  background: rgba(239,68,68,0.08);
+  color: #ef4444;
+}
+.admin-resolve-btn.no:hover:not(:disabled) {
+  background: rgba(239,68,68,0.2);
+  box-shadow: 0 0 0 3px rgba(239,68,68,0.18);
+  transform: translateY(-1px);
+}
+
+.admin-delete-btn {
+  border-color: rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.04);
+  color: rgba(255,255,255,0.6);
+}
+.admin-delete-btn:hover:not(:disabled) {
+  background: rgba(239,68,68,0.12);
+  border-color: rgba(239,68,68,0.4);
+  color: #ef4444;
+}
+
+.admin-resolve-btn:active:not(:disabled),
+.admin-delete-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.admin-resolve-btn:disabled,
+.admin-delete-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.admin-resolve-btn[aria-busy="true"],
+.admin-delete-btn[aria-busy="true"] {
+  opacity: 0.85;
+  animation: admin-btn-pulse 1s ease-in-out infinite;
+}
+
+@keyframes admin-btn-pulse {
+  0%, 100% { opacity: 0.85; }
+  50%      { opacity: 0.55; }
+}
+
+.admin-resolved-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.06);
+  color: rgba(255,255,255,0.5);
+  flex-shrink: 0;
+}
+
+.admin-outcome-badge {
+  font-weight: 700;
+}
+.admin-outcome-badge.yes { color: #22c55e; }
+.admin-outcome-badge.no  { color: #ef4444; }

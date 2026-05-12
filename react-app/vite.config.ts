@@ -94,6 +94,12 @@ export default defineConfig({
   base: "./",
   server: {
     fs: { allow: [repoRoot, path.resolve(repoRoot, "react-app")] },
+    proxy: {
+      "/api": {
+        target: "http://localhost:4000",
+        changeOrigin: true,
+      },
+    },
   },
   build: {
     outDir: path.resolve(__dirname, "../react-dist"),

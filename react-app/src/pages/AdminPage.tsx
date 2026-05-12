@@ -1,20 +1,13 @@
-import {
-  Timestamp,
-  addDoc,
-  collection,
-  deleteDoc,
-  doc,
-  getDocs,
-  orderBy,
-  query,
-  serverTimestamp,
-  updateDoc,
-} from "firebase/firestore";
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import SiteHeader from "../components/SiteHeader";
+import AppLayout from "../components/AppLayout";
 import { useAuth } from "../context/AuthContext";
-import { db } from "../firebase";
+import {
+  createMarket as apiCreateMarket,
+  deleteMarket as apiDeleteMarket,
+  listMarkets as apiListMarkets,
+  resolveMarket as apiResolveMarket,
+} from "../api/markets";
 import "../../../styles.css";
 import "../../../admin.css";
 
@@ -47,6 +40,9 @@ export default function AdminPage(): JSX.Element {
   const [createMsg, setCreateMsg] = useState("");
   const [createErr, setCreateErr] = useState(false);
   const [dataLoading, setDataLoading] = useState(true);
+  const [resolving, setResolving] = useState<{ id: string; outcome: "yes" | "no" } | null>(null);
+  const [resolveMsg, setResolveMsg] = useState<{ id: string; text: string; error: boolean } | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
     if (loading) return;
@@ -55,9 +51,12 @@ export default function AdminPage(): JSX.Element {
   }, [loading, user, role, navigate]);
 
   const loadMarkets = async (): Promise<void> => {
-    const snap = await getDocs(query(collection(db, "markets"), orderBy("createdAt", "desc")));
-    setMarkets(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Market)));
-    setDataLoading(false);
+    try {
+      const list = await apiListMarkets();
+      setMarkets(list as Market[]);
+    } finally {
+      setDataLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -78,15 +77,11 @@ export default function AdminPage(): JSX.Element {
       return;
     }
     try {
-      await addDoc(collection(db, "markets"), {
+      await apiCreateMarket({
         title: title.trim(),
         category,
-        closesAt: Timestamp.fromDate(new Date(closesAt)),
+        closesAt,
         yesPrice: yp,
-        noPrice: parseFloat((1 - yp).toFixed(2)),
-        status: "open",
-        totalTrades: 0,
-        createdAt: serverTimestamp(),
       });
       setTitle("");
       setClosesAt("");
@@ -95,20 +90,43 @@ export default function AdminPage(): JSX.Element {
       setCreateErr(false);
       await loadMarkets();
     } catch (e) {
-      setCreateMsg((e as Error).message || "Failed to create market.");
+      const err = e as { response?: { data?: { error?: string } }; message?: string };
+      setCreateMsg(err.response?.data?.error ?? err.message ?? "Failed to create market.");
       setCreateErr(true);
     }
   };
 
   const resolveMarket = async (id: string, outcome: "yes" | "no"): Promise<void> => {
-    await updateDoc(doc(db, "markets", id), { status: "resolved", outcome });
-    await loadMarkets();
+    if (resolving || deletingId) return;
+    if (!confirm(`Resolve this market as ${outcome.toUpperCase()}? This cannot be undone.`)) return;
+    setResolving({ id, outcome });
+    setResolveMsg(null);
+    try {
+      await apiResolveMarket(id, outcome);
+      setResolveMsg({ id, text: `Resolved as ${outcome.toUpperCase()}.`, error: false });
+      await loadMarkets();
+    } catch (e) {
+      const err = e as { response?: { data?: { error?: string } }; message?: string };
+      setResolveMsg({ id, text: err.response?.data?.error ?? err.message ?? "Failed to resolve market.", error: true });
+    } finally {
+      setResolving(null);
+    }
   };
 
   const deleteMarket = async (id: string): Promise<void> => {
+    if (resolving || deletingId) return;
     if (!confirm("Delete this market? This cannot be undone.")) return;
-    await deleteDoc(doc(db, "markets", id));
-    await loadMarkets();
+    setDeletingId(id);
+    setResolveMsg(null);
+    try {
+      await apiDeleteMarket(id);
+      await loadMarkets();
+    } catch (e) {
+      const err = e as { response?: { data?: { error?: string } }; message?: string };
+      setResolveMsg({ id, text: err.response?.data?.error ?? err.message ?? "Failed to delete market.", error: true });
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   if (loading || !user || role !== "admin") {
@@ -118,11 +136,7 @@ export default function AdminPage(): JSX.Element {
   }
 
   return (
-    <>
-      <div className="bg-glow bg-glow-1" aria-hidden="true" />
-      <div className="bg-glow bg-glow-2" aria-hidden="true" />
-      <SiteHeader />
-
+    <AppLayout>
       <div className="admin-page container">
         <h1 className="admin-page-title">Admin Dashboard</h1>
 
@@ -190,40 +204,68 @@ export default function AdminPage(): JSX.Element {
             ) : markets.length === 0 ? (
               <p className="admin-loading">No markets yet.</p>
             ) : (
-              markets.map((m) => (
-                <div key={m.id} className="admin-market-row">
-                  <div className="admin-market-info">
-                    <div className="admin-market-title">{m.title}</div>
-                    <div className="admin-market-meta">
-                      {m.category} · YES ${m.yesPrice.toFixed(2)} · NO ${m.noPrice.toFixed(2)} · {m.totalTrades} trades · Closes {closesLabel(m)}
-                      {m.status === "resolved" ? (
-                        <span className={"admin-outcome-badge " + m.outcome}> · {m.outcome?.toUpperCase()} wins</span>
+              markets.map((m) => {
+                const rowBusy = resolving?.id === m.id || deletingId === m.id;
+                const resolvingYes = resolving?.id === m.id && resolving.outcome === "yes";
+                const resolvingNo = resolving?.id === m.id && resolving.outcome === "no";
+                const deleting = deletingId === m.id;
+                const rowMsg = resolveMsg?.id === m.id ? resolveMsg : null;
+                return (
+                  <div key={m.id} className="admin-market-row">
+                    <div className="admin-market-info">
+                      <div className="admin-market-title">{m.title}</div>
+                      <div className="admin-market-meta">
+                        {m.category} · YES ${m.yesPrice.toFixed(2)} · NO ${m.noPrice.toFixed(2)} · {m.totalTrades} trades · Closes {closesLabel(m)}
+                        {m.status === "resolved" ? (
+                          <span className={"admin-outcome-badge " + m.outcome}> · {m.outcome?.toUpperCase()} wins</span>
+                        ) : null}
+                      </div>
+                      {rowMsg ? (
+                        <div className={"admin-msg" + (rowMsg.error ? " error" : " success")}>{rowMsg.text}</div>
                       ) : null}
                     </div>
+                    <div className="admin-market-actions">
+                      {m.status !== "resolved" ? (
+                        <>
+                          <button
+                            type="button"
+                            className="admin-resolve-btn yes"
+                            disabled={rowBusy}
+                            aria-busy={resolvingYes}
+                            onClick={() => void resolveMarket(m.id, "yes")}
+                          >
+                            {resolvingYes ? "Resolving…" : "Resolve YES"}
+                          </button>
+                          <button
+                            type="button"
+                            className="admin-resolve-btn no"
+                            disabled={rowBusy}
+                            aria-busy={resolvingNo}
+                            onClick={() => void resolveMarket(m.id, "no")}
+                          >
+                            {resolvingNo ? "Resolving…" : "Resolve NO"}
+                          </button>
+                        </>
+                      ) : (
+                        <span className="admin-resolved-label">Resolved</span>
+                      )}
+                      <button
+                        type="button"
+                        className="admin-delete-btn"
+                        disabled={rowBusy}
+                        aria-busy={deleting}
+                        onClick={() => void deleteMarket(m.id)}
+                      >
+                        {deleting ? "Deleting…" : "Delete"}
+                      </button>
+                    </div>
                   </div>
-                  <div className="admin-market-actions">
-                    {m.status !== "resolved" ? (
-                      <>
-                        <button type="button" className="admin-resolve-btn yes" onClick={() => void resolveMarket(m.id, "yes")}>
-                          Resolve YES
-                        </button>
-                        <button type="button" className="admin-resolve-btn no" onClick={() => void resolveMarket(m.id, "no")}>
-                          Resolve NO
-                        </button>
-                      </>
-                    ) : (
-                      <span className="admin-resolved-label">Resolved</span>
-                    )}
-                    <button type="button" className="admin-delete-btn" onClick={() => void deleteMarket(m.id)}>
-                      Delete
-                    </button>
-                  </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </div>
       </div>
-    </>
+    </AppLayout>
   );
 }

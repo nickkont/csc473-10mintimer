@@ -1,10 +1,10 @@
 import { createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
-import { doc, serverTimestamp, setDoc } from "firebase/firestore";
 import React, { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import SiteHeader from "../components/SiteHeader";
+import { Link, useNavigate } from "react-router-dom";
+import AppLayout from "../components/AppLayout";
 import { useAuth } from "../context/AuthContext";
-import { auth, db } from "../firebase";
+import { auth } from "../firebase";
+import { createMe } from "../api/users";
 import "../../../styles.css";
 import "../../../auth.css";
 
@@ -30,13 +30,7 @@ export default function SignupPage(): JSX.Element {
       const cred = await createUserWithEmailAndPassword(auth, email, password);
       const name = displayName.trim() || email.split("@")[0];
       await updateProfile(cred.user, { displayName: name });
-      await setDoc(doc(db, "users", cred.user.uid), {
-        email,
-        displayName: name,
-        walletBalance: 0,
-        role: "user",
-        createdAt: serverTimestamp(),
-      });
+      await createMe({ email, displayName: name });
       navigate("/events", { replace: true });
     } catch (err) {
       setMsg((err as Error).message || "Sign up failed.");
@@ -46,10 +40,7 @@ export default function SignupPage(): JSX.Element {
   };
 
   return (
-    <>
-      <div className="bg-glow bg-glow-1" aria-hidden="true" />
-      <div className="bg-glow bg-glow-2" aria-hidden="true" />
-      <SiteHeader />
+    <AppLayout>
       <main
         className="auth-main"
         style={{ minHeight: "calc(100vh - 64px)", display: "flex", alignItems: "center", justifyContent: "center", padding: "2rem 1rem" }}
@@ -104,6 +95,6 @@ export default function SignupPage(): JSX.Element {
           </p>
         </div>
       </main>
-    </>
+    </AppLayout>
   );
 }

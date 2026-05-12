@@ -4,6 +4,7 @@ import AdminPage from "./pages/AdminPage";
 import EventsPage from "./pages/EventsPage";
 import HomePage from "./pages/HomePage";
 import LoginPage from "./pages/LoginPage";
+import MarketDetailPage from "./pages/MarketDetailPage";
 import ProfilePage from "./pages/ProfilePage";
 import SignupPage from "./pages/SignupPage";
 import SocialPage from "./pages/SocialPage";
@@ -16,8 +17,10 @@ export default function App(): JSX.Element {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/signup" element={<SignupPage />} />
       <Route path="/events" element={<EventsPage />} />
+      <Route path="/market/:marketId" element={<MarketDetailPage />} />
       <Route path="/social" element={<SocialPage />} />
       <Route path="/account" element={<AccountPage />} />
+      <Route path="/account/:uid" element={<AccountPage />} />
       <Route path="/profile/:uid" element={<ProfilePage />} />
       <Route path="/wallet" element={<WalletPage />} />
       <Route path="/admin" element={<AdminPage />} />

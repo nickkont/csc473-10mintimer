@@ -1,22 +1,10 @@
-import { deleteUser, EmailAuthProvider, reauthenticateWithCredential } from "firebase/auth";
-import {
-  collection,
-  deleteDoc,
-  doc,
-  getDoc,
-  getDocs,
-  limit,
-  orderBy,
-  query,
-  serverTimestamp,
-  setDoc,
-  writeBatch,
-} from "firebase/firestore";
+import { EmailAuthProvider, reauthenticateWithCredential } from "firebase/auth";
 import React, { useCallback, useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import AppLayout from "../components/AppLayout";
 import { useAuth } from "../context/AuthContext";
-import { auth, db } from "../firebase";
+import { deleteMe, getMe, getMyTransactions, updateMe } from "../api/users";
+import { deposit as apiDeposit } from "../api/wallet";
 import { loginWithRedirect } from "../lib/siteUrls";
 import "../../../styles.css";
 import "../../../account.css";
@@ -57,6 +45,7 @@ function strength(val: string): { label: string; score: number } {
 export default function AccountPage(): JSX.Element {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
+  const { uid: paramUid } = useParams<{ uid?: string }>();
   const [profile, setProfile] = useState<ProfileData>(emptyProfile);
   const [email, setEmail] = useState("");
   const [snapshot, setSnapshot] = useState<ProfileData | null>(null);
@@ -72,31 +61,36 @@ export default function AccountPage(): JSX.Element {
 
   useEffect(() => {
     if (loading) return;
-    if (!user) navigate(loginWithRedirect("/account"), { replace: true });
-  }, [loading, user, navigate]);
+    if (!user) {
+      navigate(loginWithRedirect(paramUid ? `/account/${paramUid}` : "/account"), { replace: true });
+      return;
+    }
+    // If we landed on bare /account, redirect to canonical /account/<uid> URL.
+    if (!paramUid) {
+      navigate(`/account/${user.uid}`, { replace: true });
+      return;
+    }
+    // If the URL uid doesn't match the signed-in user, redirect to the signed-in user's account.
+    if (paramUid !== user.uid) {
+      navigate(`/account/${user.uid}`, { replace: true });
+    }
+  }, [loading, user, navigate, paramUid]);
 
-  const loadWallet = useCallback(async (uid: string): Promise<void> => {
-    const uref = doc(db, "users", uid);
-    const snap = await getDoc(uref);
-    const data = snap.exists() ? snap.data() : {};
-    const bal = typeof data.walletBalance === "number" ? data.walletBalance : 0;
+  const loadWallet = useCallback(async (): Promise<void> => {
+    const [me, txs] = await Promise.all([getMe(), getMyTransactions(10)]);
+    const bal = typeof me.walletBalance === "number" ? me.walletBalance : 0;
     setWalletBalance("$" + bal.toFixed(2));
-
-    const txSnap = await getDocs(
-      query(collection(db, "users", uid, "transactions"), orderBy("timestamp", "desc"), limit(10))
-    );
-    if (txSnap.empty) {
+    if (txs.length === 0) {
       setTxRows(<p className="tx-empty">No transactions yet.</p>);
       return;
     }
     setTxRows(
-      txSnap.docs.map((d) => {
-        const tx = d.data() as { amount?: number; description?: string; timestamp?: { seconds: number } };
+      txs.map((tx) => {
         const sign = (tx.amount ?? 0) >= 0 ? "+" : "";
         const cls = (tx.amount ?? 0) >= 0 ? "tx-credit" : "tx-debit";
         const date = tx.timestamp ? new Date(tx.timestamp.seconds * 1000).toLocaleDateString() : "—";
         return (
-          <div key={d.id} className="tx-row">
+          <div key={tx.id} className="tx-row">
             <div className="tx-left">
               <div className="tx-desc">{tx.description}</div>
               <div className="tx-date">{date}</div>
@@ -114,21 +108,20 @@ export default function AccountPage(): JSX.Element {
     if (!user) return;
     setEmail(user.email || "");
     void (async () => {
-      const snap = await getDoc(doc(db, "users", user.uid));
-      const data = snap.exists() ? (snap.data() as Partial<ProfileData>) : {};
+      const me = await getMe();
       const p: ProfileData = {
-        firstName: data.firstName ?? "",
-        lastName: data.lastName ?? "",
-        username: data.username ?? "",
-        phone: data.phone ?? "",
-        dob: data.dob ?? "",
-        timezone: data.timezone ?? "ET",
-        language: data.language ?? "en",
-        bio: data.bio ?? "",
+        firstName: String(me.firstName ?? ""),
+        lastName: String(me.lastName ?? ""),
+        username: String(me.username ?? ""),
+        phone: String((me as Record<string, unknown>).phone ?? ""),
+        dob: String((me as Record<string, unknown>).dob ?? ""),
+        timezone: String((me as Record<string, unknown>).timezone ?? "ET"),
+        language: String((me as Record<string, unknown>).language ?? "en"),
+        bio: String(me.bio ?? ""),
       };
       setProfile(p);
       setSnapshot(p);
-      await loadWallet(user.uid);
+      await loadWallet();
     })();
   }, [user, loadWallet]);
 
@@ -136,14 +129,15 @@ export default function AccountPage(): JSX.Element {
     if (!user) return;
     setProfileMsg("Saving…");
     setProfileErr(false);
-    void setDoc(doc(db, "users", user.uid), profile, { merge: true })
+    void updateMe(profile)
       .then(() => {
         setSnapshot(profile);
         setProfileMsg("Profile saved.");
         setProfileErr(false);
       })
       .catch((e) => {
-        setProfileMsg((e as Error).message || "Could not save profile.");
+        const err = e as { response?: { data?: { error?: string } }; message?: string };
+        setProfileMsg(err.response?.data?.error ?? err.message ?? "Could not save profile.");
         setProfileErr(true);
       });
   };
@@ -155,26 +149,14 @@ export default function AccountPage(): JSX.Element {
 
   const addFunds = (): void => {
     if (!user) return;
-    const uid = user.uid;
-    const userRef = doc(db, "users", uid);
-    const amount = 10;
     void (async () => {
-      const docSnap = await getDoc(userRef);
-      const current = docSnap.exists() ? Number(docSnap.data().walletBalance) || 0 : 0;
-      const newBalance = current + amount;
-      const batch = writeBatch(db);
-      batch.update(userRef, { walletBalance: newBalance });
-      const txRef = doc(collection(db, "users", uid, "transactions"));
-      batch.set(txRef, {
-        type: "deposit",
-        amount,
-        description: "Demo deposit",
-        balance: newBalance,
-        timestamp: serverTimestamp(),
-      });
-      await batch.commit();
-      setWalletBalance("$" + newBalance.toFixed(2));
-      await loadWallet(uid);
+      try {
+        const { newBalance } = await apiDeposit(10, "Demo");
+        setWalletBalance("$" + newBalance.toFixed(2));
+        await loadWallet();
+      } catch {
+        // swallow; UI feedback would land here
+      }
     })();
   };
 
@@ -190,13 +172,13 @@ export default function AccountPage(): JSX.Element {
     }
     const cred = EmailAuthProvider.credential(user.email || "", deletePwd);
     void reauthenticateWithCredential(user, cred)
-      .then(() => deleteDoc(doc(db, "users", user.uid)))
-      .then(() => deleteUser(user))
+      .then(() => deleteMe())
       .then(() => {
         navigate("/", { replace: true });
       })
       .catch((e) => {
-        setDeleteMsg((e as Error).message || "Could not delete account.");
+        const err = e as { response?: { data?: { error?: string } }; message?: string };
+        setDeleteMsg(err.response?.data?.error ?? err.message ?? "Could not delete account.");
       });
   };
 
@@ -221,6 +203,11 @@ export default function AccountPage(): JSX.Element {
       <div className="page">
         <div className="container">
           <div className="page-title">Account Settings</div>
+          {user ? (
+            <p className="account-uid-line">
+              User ID: <code>{user.uid}</code>
+            </p>
+          ) : null}
 
           <div className="section">
             <div className="section-head">Profile</div>
@@ -407,8 +394,6 @@ export default function AccountPage(): JSX.Element {
           </div>
         </div>
       </div>
-
-      <footer>Eventra · Account</footer>
     </AppLayout>
   );
 }

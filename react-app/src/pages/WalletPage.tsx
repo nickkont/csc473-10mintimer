@@ -1,19 +1,9 @@
-import {
-  collection,
-  doc,
-  getDocs,
-  getDoc,
-  limit,
-  orderBy,
-  query,
-  runTransaction,
-  serverTimestamp,
-} from "firebase/firestore";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import SiteHeader from "../components/SiteHeader";
+import AppLayout from "../components/AppLayout";
 import { useAuth } from "../context/AuthContext";
-import { db } from "../firebase";
+import { deposit as apiDeposit, withdraw as apiWithdraw } from "../api/wallet";
+import { getMe, getMyPositions, getMyTransactions } from "../api/users";
 import "../../../styles.css";
 import "../../../wallet.css";
 
@@ -55,29 +45,27 @@ export default function WalletPage(): JSX.Element {
     if (!user) return;
     setDataLoading(true);
     try {
-      const [userSnap, posSnap, txSnap] = await Promise.all([
-        getDoc(doc(db, "users", user.uid)),
-        getDocs(collection(db, "users", user.uid, "positions")),
-        getDocs(query(collection(db, "users", user.uid, "transactions"), orderBy("timestamp", "desc"), limit(50))),
+      const [me, positions, transactions] = await Promise.all([
+        getMe(),
+        getMyPositions(),
+        getMyTransactions(50),
       ]);
 
-      const walletBalance = userSnap.exists() ? Number(userSnap.data().walletBalance) || 0 : 0;
-      setCash(walletBalance);
+      setCash(Number(me.walletBalance) || 0);
 
-      let inv = 0;
-      posSnap.forEach((d) => {
-        const p = d.data();
-        inv += (Number(p.yesShares) || 0) + (Number(p.noShares) || 0);
-      });
+      const inv = positions.reduce(
+        (sum, p) => sum + (Number(p.yesShares) || 0) + (Number(p.noShares) || 0),
+        0
+      );
       setInvested(parseFloat(inv.toFixed(2)));
 
       setTxs(
-        txSnap.docs.map((d) => ({
-          id: d.id,
-          type: String(d.data().type || ""),
-          amount: Number(d.data().amount || 0),
-          description: String(d.data().description || ""),
-          timestamp: d.data().timestamp,
+        transactions.map((t) => ({
+          id: t.id,
+          type: String(t.type || ""),
+          amount: Number(t.amount || 0),
+          description: String(t.description || ""),
+          timestamp: t.timestamp,
         }))
       );
     } finally {
@@ -89,6 +77,11 @@ export default function WalletPage(): JSX.Element {
     if (user) void loadData();
   }, [user, loadData]);
 
+  const errMessage = (e: unknown): string => {
+    const err = e as { response?: { data?: { error?: string } }; message?: string };
+    return err.response?.data?.error ?? err.message ?? "Request failed.";
+  };
+
   const deposit = async (): Promise<void> => {
     if (!user) return;
     const amount = parseFloat(depositAmt);
@@ -97,30 +90,14 @@ export default function WalletPage(): JSX.Element {
       setMsgOk(false);
       return;
     }
-    const uid = user.uid;
-    const userRef = doc(db, "users", uid);
     try {
-      const newBalance = await runTransaction(db, async (t) => {
-        const snap = await t.get(userRef);
-        const cur = snap.exists() ? Number(snap.data().walletBalance) || 0 : 0;
-        const nb = parseFloat((cur + amount).toFixed(2));
-        t.update(userRef, { walletBalance: nb });
-        const txRef = doc(collection(db, "users", uid, "transactions"));
-        t.set(txRef, {
-          type: "deposit",
-          amount,
-          description: `Deposit via ${paymentMethod}`,
-          balance: nb,
-          timestamp: serverTimestamp(),
-        });
-        return nb;
-      });
+      const { newBalance } = await apiDeposit(amount, paymentMethod);
       setCash(newBalance);
       setMsg("Deposit successful!");
       setMsgOk(true);
       await loadData();
     } catch (e) {
-      setMsg((e as Error).message || "Deposit failed.");
+      setMsg(errMessage(e));
       setMsgOk(false);
     }
   };
@@ -133,32 +110,15 @@ export default function WalletPage(): JSX.Element {
       setMsgOk(false);
       return;
     }
-    const uid = user.uid;
-    const userRef = doc(db, "users", uid);
     try {
-      const newBalance = await runTransaction(db, async (t) => {
-        const snap = await t.get(userRef);
-        const cur = snap.exists() ? Number(snap.data().walletBalance) || 0 : 0;
-        if (amount > cur) throw new Error("Insufficient balance.");
-        const nb = parseFloat((cur - amount).toFixed(2));
-        t.update(userRef, { walletBalance: nb });
-        const txRef = doc(collection(db, "users", uid, "transactions"));
-        t.set(txRef, {
-          type: "withdrawal",
-          amount: -amount,
-          description: "Withdrawal",
-          balance: nb,
-          timestamp: serverTimestamp(),
-        });
-        return nb;
-      });
+      const { newBalance } = await apiWithdraw(amount);
       setCash(newBalance);
       setWithdrawAmt("");
       setMsg("Withdrawal successful!");
       setMsgOk(true);
       await loadData();
     } catch (e) {
-      setMsg((e as Error).message || "Withdrawal failed.");
+      setMsg(errMessage(e));
       setMsgOk(false);
     }
   };
@@ -182,12 +142,7 @@ export default function WalletPage(): JSX.Element {
   }
 
   return (
-    <div className="wallet-page">
-      <div className="bg-glow bg-glow-1" aria-hidden="true" />
-      <div className="bg-glow bg-glow-2" aria-hidden="true" />
-
-      <SiteHeader />
-
+    <AppLayout>
       <div className="wallet-shell">
         <aside className="wallet-sidebar" aria-label="Wallet navigation">
           <div className="wallet-sidebar-group">
@@ -380,10 +335,6 @@ export default function WalletPage(): JSX.Element {
           </div>
         </main>
       </div>
-
-      <footer className="wallet-footer">
-        <span>Eventra · Wallet</span>
-      </footer>
-    </div>
+    </AppLayout>
   );
 }

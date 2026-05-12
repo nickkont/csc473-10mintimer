@@ -1,25 +1,21 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import SiteHeader from "../components/SiteHeader";
+import AppLayout from "../components/AppLayout";
 import { useAuth } from "../context/AuthContext";
 import "../../../styles.css";
 
 export default function HomePage(): JSX.Element {
-  const { user, signOutApp } = useAuth();
+  const { user } = useAuth();
 
   return (
-    <>
-      <div className="bg-glow bg-glow-1" aria-hidden="true" />
-      <div className="bg-glow bg-glow-2" aria-hidden="true" />
-      <SiteHeader />
-
+    <AppLayout>
       <main className="container">
         <section className="hero">
           <div className="hero-eyebrow">
             <span className="hero-eyebrow-dot" />
             Live markets · Real predictions
           </div>
-          <h1>Prediction Markets <span className="accent">for the culture.</span></h1>
+          <h1>Prediction Markets for <span className="accent">the culture.</span></h1>
           <p className="hero-sub">
             Buy YES/NO contracts on events you actually care about — from $0.01 to $1.00.
           </p>
@@ -95,17 +91,6 @@ export default function HomePage(): JSX.Element {
           </div>
         </section>
       </main>
-
-      <footer className="footer">
-        <div className="container footer-inner">
-          <span>Eventra · Prediction Markets</span>
-          {user ? (
-            <button type="button" className="btn btn-ghost" style={{ fontSize: "0.8rem" }} onClick={() => void signOutApp()}>
-              Log out
-            </button>
-          ) : null}
-        </div>
-      </footer>
-    </>
+    </AppLayout>
   );
 }

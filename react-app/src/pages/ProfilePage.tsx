@@ -1,19 +1,10 @@
-import { doc, getDoc } from "firebase/firestore";
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import AppLayout from "../components/AppLayout";
 import { useAuth } from "../context/AuthContext";
-import { db } from "../firebase";
+import { getPublicProfile, PublicProfile } from "../api/users";
 import "../../../styles.css";
 import "../../../account.css";
-
-interface PublicProfile {
-  firstName: string;
-  lastName: string;
-  username: string;
-  bio: string;
-  role: string;
-}
 
 type LoadState = "loading" | "found" | "missing";
 
@@ -30,20 +21,13 @@ export default function ProfilePage(): JSX.Element {
     }
     setState("loading");
     void (async () => {
-      const snap = await getDoc(doc(db, "users", uid));
-      if (!snap.exists()) {
+      try {
+        const p = await getPublicProfile(uid);
+        setProfile(p);
+        setState("found");
+      } catch {
         setState("missing");
-        return;
       }
-      const data = snap.data() as Partial<PublicProfile>;
-      setProfile({
-        firstName: data.firstName ?? "",
-        lastName: data.lastName ?? "",
-        username: data.username ?? "",
-        bio: data.bio ?? "",
-        role: data.role ?? "user",
-      });
-      setState("found");
     })();
   }, [uid]);
 

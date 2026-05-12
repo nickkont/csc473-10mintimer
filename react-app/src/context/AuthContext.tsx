@@ -1,8 +1,8 @@
 import type { User } from "firebase/auth";
 import { onAuthStateChanged, signOut } from "firebase/auth";
-import { doc, getDoc } from "firebase/firestore";
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
-import { auth, db } from "../firebase";
+import { auth } from "../firebase";
+import { getMe } from "../api/users";
 
 type AuthCtx = {
   user: User | null;
@@ -30,10 +30,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }): JSX.E
         return;
       }
       try {
-        const snap = await getDoc(doc(db, "users", u.uid));
-        const data = snap.exists() ? snap.data() : {};
-        setBalance(typeof data.walletBalance === "number" ? data.walletBalance : 0);
-        setRole(typeof data.role === "string" ? data.role : "user");
+        const me = await getMe();
+        setBalance(typeof me.walletBalance === "number" ? me.walletBalance : 0);
+        setRole(typeof me.role === "string" ? me.role : "user");
       } catch {
         setBalance(0);
         setRole("user");
