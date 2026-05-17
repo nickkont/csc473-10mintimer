@@ -129,7 +129,7 @@ export default function AccountPage(): JSX.Element {
     if (!user) return;
     setProfileMsg("Saving…");
     setProfileErr(false);
-    void updateMe(profile)
+    void updateMe(profile as unknown as Parameters<typeof updateMe>[0])
       .then(() => {
         setSnapshot(profile);
         setProfileMsg("Profile saved.");

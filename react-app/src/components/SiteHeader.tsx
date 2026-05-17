@@ -20,7 +20,7 @@ export default function SiteHeader(): JSX.Element {
     <header className="site-header">
       <nav className="nav container">
         <Link className="brand" to="/">
-          <span className="brand-mark" aria-hidden="true" />
+          <img src="/logo.png" alt="Eventra logo" className="brand-mark" />
           <span className="brand-text">Eventra</span>
         </Link>
         <div className="nav-actions">

@@ -90,9 +90,9 @@ a { color: inherit; text-decoration: none; }
 }
 
 .brand-mark {
-  width: 28px; height: 28px;
-  border-radius: 8px;
-  background: linear-gradient(135deg, #7c3aed, #22c55e);
+  height: 44px;
+  width: auto;
+  object-fit: contain;
 }
 
 .draft-badge {
