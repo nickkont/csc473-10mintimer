@@ -198,16 +198,40 @@ export default function AccountPage(): JSX.Element {
     );
   }
 
+  const avatarInitials = (() => {
+    const f = profile.firstName?.[0] ?? "";
+    const l = profile.lastName?.[0] ?? "";
+    if (f || l) return (f + l).toUpperCase();
+    return user?.email?.[0].toUpperCase() ?? "?";
+  })();
+
+  const displayName =
+    (profile.firstName || profile.lastName)
+      ? `${profile.firstName} ${profile.lastName}`.trim()
+      : profile.username || user?.email?.split("@")[0] || "Your Account";
+
   return (
     <AppLayout>
       <div className="page">
         <div className="container">
-          <div className="page-title">Account Settings</div>
-          {user ? (
-            <p className="account-uid-line">
-              User ID: <code>{user.uid}</code>
-            </p>
-          ) : null}
+          <div className="profile-hero">
+            <div className="profile-hero-left">
+              <div className="profile-hero-avatar">{avatarInitials}</div>
+              <div className="profile-hero-info">
+                <div className="profile-hero-eyebrow">
+                  <span className="profile-hero-dot" />
+                  Account Settings
+                </div>
+                <div className="profile-hero-name">{displayName}</div>
+                <div className="profile-hero-email">{user?.email}</div>
+              </div>
+            </div>
+            <div className="profile-hero-balance">
+              <div className="profile-hero-balance-label">Available Balance</div>
+              <div className="profile-hero-balance-amt">{walletBalance}</div>
+              <Link to="/wallet" className="profile-hero-wallet-link">Open wallet →</Link>
+            </div>
+          </div>
 
           <div className="section">
             <div className="section-head">Profile</div>
