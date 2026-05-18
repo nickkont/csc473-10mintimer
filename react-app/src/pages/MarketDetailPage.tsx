@@ -5,9 +5,8 @@ import {
   getDocs,
   orderBy,
   query,
-  runTransaction,
-  serverTimestamp,
 } from "firebase/firestore";
+import { db } from "../firebase";
 import { useCallback, useEffect, useState } from "react";
 import {
   Area,
@@ -22,27 +21,24 @@ import { useNavigate, useParams } from "react-router-dom";
 import AppLayout from "../components/AppLayout";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
-import { db } from "../firebase";
+import { placeBet } from "../api/bets";
 import type { Market } from "./EventsPage";
 import "../../../styles.css";
 import "../../../market-detail.css";
 
+
 interface PricePoint {
   label: string;
   yes: number;
+  no: number;
   ts: number;
 }
 
 type TimeFilter = "1D" | "1W" | "1M" | "ALL";
 
 const CATEGORY_EMOJI: Record<string, string> = {
-  ccny: "🎓",
-  sports: "🏆",
-  politics: "🏛️",
-  economics: "📈",
-  culture: "🎭",
-  climate: "🌍",
-  other: "📊",
+  ccny: "🎓", sports: "🏆", politics: "🏛️",
+  economics: "📈", culture: "🎭", climate: "🌍", other: "📊",
 };
 
 function seededRand(seed: number): number {
@@ -50,6 +46,7 @@ function seededRand(seed: number): number {
   return x - Math.floor(x);
 }
 
+// Simulates 30 days of history with one data point per day
 function simulateHistory(marketId: string, currentPrice: number): PricePoint[] {
   let seed = 0;
   for (let i = 0; i < marketId.length; i++) seed += marketId.charCodeAt(i);
@@ -59,12 +56,13 @@ function simulateHistory(marketId: string, currentPrice: number): PricePoint[] {
   for (let i = 30; i >= 0; i--) {
     const rng = seededRand(seed + i * 7);
     price = price + (currentPrice - price) * 0.12 + (rng - 0.5) * 0.07;
-    price = Math.max(0.02, Math.min(0.98, price));
-    const date = new Date(now - i * 24 * 60 * 60 * 1000);
+    price = Math.max(0.03, Math.min(0.97, price));
+    const ts = now - i * 24 * 60 * 60 * 1000;
     points.push({
-      label: date.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+      label: new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
       yes: Math.round(price * 100),
-      ts: date.getTime(),
+      no: Math.round((1 - price) * 100),
+      ts,
     });
   }
   return points;
@@ -82,16 +80,32 @@ function filterByTime(points: PricePoint[], filter: TimeFilter): PricePoint[] {
   return points.filter((p) => p.ts >= cutoff);
 }
 
+// Re-labels points based on the time span of the data
+function labeledPoints(points: PricePoint[]): PricePoint[] {
+  if (points.length < 2) return points;
+  const spanMs = points[points.length - 1].ts - points[0].ts;
+  const useTime = spanMs < 864e5; // less than 24 hours → show clock times
+  return points.map((p) => ({
+    ...p,
+    label: useTime
+      ? new Date(p.ts).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
+      : new Date(p.ts).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+  }));
+}
+
 function ChartTooltip({ active, payload, label }: {
   active?: boolean;
-  payload?: Array<{ value: number }>;
+  payload?: Array<{ value: number; name: string }>;
   label?: string;
 }) {
   if (!active || !payload?.length) return null;
+  const yes = payload.find((p) => p.name === "yes")?.value ?? 0;
+  const no  = payload.find((p) => p.name === "no")?.value  ?? 0;
   return (
     <div className="md-tooltip">
       <div className="md-tooltip-date">{label}</div>
-      <div className="md-tooltip-val">{payload[0].value}% YES</div>
+      <div className="md-tooltip-yes">{yes}% YES</div>
+      <div className="md-tooltip-no">{no}% NO</div>
     </div>
   );
 }
@@ -131,12 +145,13 @@ export default function MarketDetailPage(): JSX.Element {
         if (histSnap.size >= 2) {
           setAllPoints(
             histSnap.docs.map((d) => {
-              const data = d.data() as { yesPrice: number; timestamp: { seconds: number } };
-              const date = new Date(data.timestamp.seconds * 1000);
+              const data = d.data() as { yesPrice: number; noPrice: number; timestamp: { seconds: number } };
+              const ts = data.timestamp.seconds * 1000;
               return {
-                label: date.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+                label: "", // will be computed by labeledPoints()
                 yes: Math.round(data.yesPrice * 100),
-                ts: date.getTime(),
+                no: Math.round((data.noPrice ?? (1 - data.yesPrice)) * 100),
+                ts,
               };
             })
           );
@@ -153,9 +168,9 @@ export default function MarketDetailPage(): JSX.Element {
 
   useEffect(() => { void loadMarket(); }, [loadMarket]);
 
-  const chartData = filterByTime(allPoints, timeFilter);
+  const chartData = labeledPoints(filterByTime(allPoints, timeFilter));
   const currentYes = market ? Math.round(market.yesPrice * 100) : 0;
-  const currentNo = market ? Math.round(market.noPrice * 100) : 0;
+  const currentNo  = market ? Math.round(market.noPrice  * 100) : 0;
   const price = side === "yes" ? (market?.yesPrice ?? 0) : (market?.noPrice ?? 0);
   const totalCost = price * Math.max(1, shares);
 
@@ -165,71 +180,32 @@ export default function MarketDetailPage(): JSX.Element {
     const cost = parseFloat((price * n).toFixed(2));
     if (cost > userBalance) { setTradeMsg("Insufficient balance."); setTradeMsgOk(false); return; }
     setTradeMsg("Processing…");
-    const uid = user.uid;
-    const userRef = doc(db, "users", uid);
-    const marketRef = doc(db, "markets", market.id);
-    const posRef = doc(db, "users", uid, "positions", market.id);
     try {
-      const newBalance = await runTransaction(db, async (t) => {
-        const [userSnap, posSnap, marketSnap] = await Promise.all([
-          t.get(userRef), t.get(posRef), t.get(marketRef),
-        ]);
-        const bal = userSnap.exists() ? Number(userSnap.data().walletBalance) || 0 : 0;
-        if (cost > bal) throw new Error("Insufficient balance.");
-        const nb = parseFloat((bal - cost).toFixed(2));
-        const posData = posSnap.exists() ? posSnap.data() : { yesShares: 0, noShares: 0 };
-        const ny = Number(posData.yesShares) + (side === "yes" ? n : 0);
-        const nn = Number(posData.noShares) + (side === "no" ? n : 0);
-        const trades = marketSnap.exists() ? Number(marketSnap.data().totalTrades) || 0 : 0;
-        t.update(userRef, { walletBalance: nb });
-        t.set(posRef, { marketId: market.id, yesShares: ny, noShares: nn, updatedAt: serverTimestamp() }, { merge: true });
-        const txRef = doc(collection(db, "users", uid, "transactions"));
-        t.set(txRef, {
-          type: "trade",
-          amount: -cost,
-          description: `Bought ${n} ${side.toUpperCase()} on: ${market.title}`,
-          balance: nb,
-          timestamp: serverTimestamp(),
-        });
-        t.update(marketRef, { totalTrades: trades + 1 });
-        const snapRef = doc(collection(db, "markets", market.id, "priceHistory"));
-        t.set(snapRef, { yesPrice: market.yesPrice, noPrice: market.noPrice, timestamp: serverTimestamp() });
-        return nb;
-      });
+      const { newBalance } = await placeBet({ marketId: market.id, side, shares: n });
       setUserBalance(newBalance);
       setTradeMsg("Trade placed!");
       setTradeMsgOk(true);
       toast("Trade placed! 🎉");
       await loadMarket();
     } catch (e) {
-      const m = (e as Error).message || "Trade failed.";
-      setTradeMsg(m);
+      const msg = (e as Error).message || "Trade failed.";
+      setTradeMsg(msg);
       setTradeMsgOk(false);
-      toast(m, "error");
+      toast(msg, "error");
     }
   };
 
   if (pageLoading) {
-    return (
-      <AppLayout>
-        <div className="md-loading">Loading market…</div>
-      </AppLayout>
-    );
+    return <AppLayout><div className="md-loading">Loading market…</div></AppLayout>;
   }
-
   if (!market) {
-    return (
-      <AppLayout>
-        <div className="md-loading">Market not found.</div>
-      </AppLayout>
-    );
+    return <AppLayout><div className="md-loading">Market not found.</div></AppLayout>;
   }
 
   const resolved = market.status === "resolved";
   const closesDate = market.closesAt
-    ? new Date((market.closesAt as { seconds: number }).seconds * 1000).toLocaleDateString("en-US", {
-        month: "short", day: "numeric", year: "numeric",
-      })
+    ? new Date((market.closesAt as { seconds: number }).seconds * 1000)
+        .toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
     : null;
 
   return (
@@ -265,16 +241,27 @@ export default function MarketDetailPage(): JSX.Element {
             {/* Chart */}
             <div className="md-chart-section">
               <div className="md-prob-row">
-                <span className="md-prob-value">{currentYes}%</span>
-                <span className="md-prob-label">chance YES</span>
+                <div className="md-prob-pair">
+                  <span className="md-prob-value yes">{currentYes}%</span>
+                  <span className="md-prob-label">YES</span>
+                </div>
+                <div className="md-prob-divider" />
+                <div className="md-prob-pair">
+                  <span className="md-prob-value no">{currentNo}%</span>
+                  <span className="md-prob-label">NO</span>
+                </div>
               </div>
 
               <ResponsiveContainer width="100%" height={260}>
                 <AreaChart data={chartData} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
                   <defs>
                     <linearGradient id="yesGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#4ade80" stopOpacity={0.25} />
+                      <stop offset="5%"  stopColor="#4ade80" stopOpacity={0.22} />
                       <stop offset="95%" stopColor="#4ade80" stopOpacity={0} />
+                    </linearGradient>
+                    <linearGradient id="noGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%"  stopColor="#ef4444" stopOpacity={0.18} />
+                      <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
@@ -301,6 +288,15 @@ export default function MarketDetailPage(): JSX.Element {
                     fill="url(#yesGrad)"
                     dot={false}
                     activeDot={{ r: 5, fill: "#4ade80", stroke: "#fff", strokeWidth: 2 }}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="no"
+                    stroke="#ef4444"
+                    strokeWidth={2}
+                    fill="url(#noGrad)"
+                    dot={false}
+                    activeDot={{ r: 5, fill: "#ef4444", stroke: "#fff", strokeWidth: 2 }}
                   />
                 </AreaChart>
               </ResponsiveContainer>
@@ -392,3 +388,4 @@ export default function MarketDetailPage(): JSX.Element {
     </AppLayout>
   );
 }
+

@@ -105,18 +105,32 @@
 
 .md-prob-row {
   display: flex;
-  align-items: baseline;
-  gap: 10px;
+  align-items: center;
+  gap: 20px;
   margin-bottom: 20px;
 }
 
+.md-prob-pair {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.md-prob-divider {
+  width: 1px;
+  height: 36px;
+  background: rgba(255,255,255,0.1);
+  flex-shrink: 0;
+}
+
 .md-prob-value {
-  font-size: 2.8rem;
+  font-size: 2.4rem;
   font-weight: 800;
   letter-spacing: -1px;
-  color: #4ade80;
   line-height: 1;
 }
+.md-prob-value.yes { color: #4ade80; }
+.md-prob-value.no  { color: #ef4444; }
 
 .md-prob-label {
   font-size: 0.85rem;
@@ -156,8 +170,9 @@
   padding: 8px 12px;
   backdrop-filter: blur(8px);
 }
-.md-tooltip-date { font-size: 0.75rem; color: rgba(255,255,255,0.45); margin-bottom: 2px; }
-.md-tooltip-val  { font-size: 0.95rem; font-weight: 700; color: #4ade80; }
+.md-tooltip-date { font-size: 0.75rem; color: rgba(255,255,255,0.45); margin-bottom: 4px; }
+.md-tooltip-yes  { font-size: 0.88rem; font-weight: 700; color: #4ade80; }
+.md-tooltip-no   { font-size: 0.88rem; font-weight: 700; color: #ef4444; }
 
 /* Trade panel */
 .md-trade-panel {

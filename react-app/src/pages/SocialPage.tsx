@@ -2,10 +2,13 @@ import { onAuthStateChanged } from "firebase/auth";
 import {
   addDoc,
   collection,
+  doc,
+  increment,
   onSnapshot,
   orderBy,
   query,
   serverTimestamp,
+  updateDoc,
 } from "firebase/firestore";
 import type { User } from "firebase/auth";
 import React, { useCallback, useEffect, useState } from "react";
@@ -31,12 +34,12 @@ interface PostVM {
   comments: number;
 }
 
-function escapeHTML(str: string): string {
-  return String(str)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+interface CommentVM {
+  id: string;
+  name: string;
+  initials: string;
+  text: string;
+  minutesAgo: number;
 }
 
 function formatTime(minutesAgo: number): string {
@@ -66,13 +69,7 @@ function filterPosts(posts: PostVM[], activeFilter: TimeFilter): PostVM[] {
 function getInitials(u: User | null): string {
   if (!u) return "?";
   if (u.displayName) {
-    return u.displayName
-      .trim()
-      .split(/\s+/)
-      .map((s) => s[0])
-      .join("")
-      .slice(0, 2)
-      .toUpperCase();
+    return u.displayName.trim().split(/\s+/).map((s) => s[0]).join("").slice(0, 2).toUpperCase();
   }
   if (u.email) return u.email[0].toUpperCase();
   return "?";
@@ -85,6 +82,118 @@ function getAuthorName(u: User | null): string {
   return "Anonymous";
 }
 
+// ── Comments panel ────────────────────────────────────────────────────────────
+
+function CommentsPanel({
+  postId,
+  user,
+  onCountChange,
+}: {
+  postId: string;
+  user: User | null;
+  onCountChange: (postId: string, delta: number) => void;
+}): JSX.Element {
+  const [comments, setComments] = useState<CommentVM[]>([]);
+  const [loadingComments, setLoadingComments] = useState(true);
+  const [commentText, setCommentText] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    const q = query(
+      collection(db, "socialPosts", postId, "comments"),
+      orderBy("createdAt", "asc")
+    );
+    const unsub = onSnapshot(q, (snap) => {
+      setComments(
+        snap.docs.map((d) => ({
+          id: d.id,
+          name: String(d.data().authorName || "Anonymous"),
+          initials: String(d.data().authorInitials || "?"),
+          text: String(d.data().text || ""),
+          minutesAgo: timestampToMinutesAgo(d.data().createdAt),
+        }))
+      );
+      setLoadingComments(false);
+    });
+    return () => unsub();
+  }, [postId]);
+
+  const submitComment = async (): Promise<void> => {
+    const t = commentText.trim();
+    if (!t || !user || submitting) return;
+    setSubmitting(true);
+    setCommentText("");
+    try {
+      await addDoc(collection(db, "socialPosts", postId, "comments"), {
+        uid: user.uid,
+        authorName: getAuthorName(user),
+        authorInitials: getInitials(user),
+        text: t,
+        createdAt: serverTimestamp(),
+      });
+      await updateDoc(doc(db, "socialPosts", postId), { comments: increment(1) });
+      onCountChange(postId, 1);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="comments-section">
+      {loadingComments ? (
+        <p className="comments-loading">Loading comments…</p>
+      ) : comments.length === 0 ? (
+        <p className="comments-empty">No comments yet. Be the first!</p>
+      ) : (
+        comments.map((c) => (
+          <div key={c.id} className="comment-row">
+            <div className="avatar comment-avatar">{c.initials}</div>
+            <div className="comment-body">
+              <div className="comment-header">
+                <strong>{c.name}</strong>
+                <span className="post-time">{formatTime(c.minutesAgo)}</span>
+              </div>
+              <p className="comment-text">{c.text}</p>
+            </div>
+          </div>
+        ))
+      )}
+      {user ? (
+        <div className="comment-compose">
+          <div className="avatar comment-avatar">{getInitials(user)}</div>
+          <input
+            type="text"
+            className="comment-input"
+            placeholder="Write a comment…"
+            value={commentText}
+            onChange={(e) => setCommentText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                void submitComment();
+              }
+            }}
+          />
+          <button
+            type="button"
+            className="comment-submit-btn"
+            disabled={submitting || !commentText.trim()}
+            onClick={() => void submitComment()}
+          >
+            Reply
+          </button>
+        </div>
+      ) : (
+        <p className="comments-login">
+          <a href="#/login">Log in</a> to leave a comment.
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ── Main page ─────────────────────────────────────────────────────────────────
+
 export default function SocialPage(): JSX.Element {
   const navigate = useNavigate();
   const toast = useToast();
@@ -95,6 +204,7 @@ export default function SocialPage(): JSX.Element {
   const [pendingImage, setPendingImage] = useState<string | null>(null);
   const [msg, setMsg] = useState("");
   const [msgOk, setMsgOk] = useState(false);
+  const [openCommentId, setOpenCommentId] = useState<string | null>(null);
 
   useEffect(() => {
     return onAuthStateChanged(auth, setUser);
@@ -128,7 +238,10 @@ export default function SocialPage(): JSX.Element {
         });
         setPosts(list);
       },
-      () => setMsg("Could not load social posts right now.")
+      (err) => {
+        console.error("socialPosts snapshot error:", err);
+        setMsg((err as Error).message || "Could not load social posts right now.");
+      }
     );
     return () => unsub();
   }, []);
@@ -142,6 +255,12 @@ export default function SocialPage(): JSX.Element {
         const liked = !p.liked;
         return { ...p, liked, likes: p.likes + (liked ? 1 : -1) };
       })
+    );
+  }, []);
+
+  const handleCommentCountChange = useCallback((postId: string, delta: number): void => {
+    setPosts((prev) =>
+      prev.map((p) => (p.id === postId ? { ...p, comments: p.comments + delta } : p))
     );
   }, []);
 
@@ -181,10 +300,7 @@ export default function SocialPage(): JSX.Element {
 
   const onFile = (e: React.ChangeEvent<HTMLInputElement>): void => {
     const file = e.target.files?.[0];
-    if (!file) {
-      setPendingImage(null);
-      return;
-    }
+    if (!file) { setPendingImage(null); return; }
     const reader = new FileReader();
     reader.onload = () => {
       setPendingImage(typeof reader.result === "string" ? reader.result : null);
@@ -241,10 +357,7 @@ export default function SocialPage(): JSX.Element {
               className={"time-tab" + (activeFilter === tab ? " active" : "")}
               role="button"
               tabIndex={0}
-              onClick={() => {
-                setActiveFilter(tab);
-                localStorage.setItem("activeTab", tab);
-              }}
+              onClick={() => { setActiveFilter(tab); localStorage.setItem("activeTab", tab); }}
               onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") {
                   e.preventDefault();
@@ -266,12 +379,13 @@ export default function SocialPage(): JSX.Element {
               visible.map((post) => {
                 const heartFill = post.liked ? "red" : "none";
                 const heartStroke = post.liked ? "red" : "currentColor";
+                const commentsOpen = openCommentId === post.id;
                 return (
                   <div key={post.id} className="post-row" data-post-id={post.id}>
-                    <div className="avatar">{escapeHTML(post.initials)}</div>
+                    <div className="avatar">{post.initials}</div>
                     <div className="field">
                       <div className="post-header">
-                        <strong>{escapeHTML(post.name)}</strong>
+                        <strong>{post.name}</strong>
                         <span className="post-time">{formatTime(post.minutesAgo)}</span>
                       </div>
                       <div className="post-content">
@@ -284,7 +398,12 @@ export default function SocialPage(): JSX.Element {
                         <hr className="divider" />
                         <div className="post-actions">
                           <div className="post-action-row">
-                            <button type="button" className="action-btn" aria-label="Comments">
+                            <button
+                              type="button"
+                              className={"action-btn" + (commentsOpen ? " active" : "")}
+                              aria-label="Comments"
+                              onClick={() => setOpenCommentId(commentsOpen ? null : post.id)}
+                            >
                               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                 <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
                               </svg>
@@ -293,17 +412,10 @@ export default function SocialPage(): JSX.Element {
                             <button
                               type="button"
                               className="action-btn"
-                              data-action="like"
-                              data-id={post.id}
                               onClick={() => likePost(post.id)}
                               aria-label="Like"
                             >
-                              <svg
-                                viewBox="0 0 24 24"
-                                fill={heartFill}
-                                stroke={heartStroke}
-                                strokeWidth="2"
-                              >
+                              <svg viewBox="0 0 24 24" fill={heartFill} stroke={heartStroke} strokeWidth="2">
                                 <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 0 0 0-7.78z" />
                               </svg>
                               <p className="like_count">{post.likes}</p>
@@ -318,8 +430,14 @@ export default function SocialPage(): JSX.Element {
                               </svg>
                             </button>
                           </div>
-                          <div className="buy-row" />
                         </div>
+                        {commentsOpen ? (
+                          <CommentsPanel
+                            postId={post.id}
+                            user={user}
+                            onCountChange={handleCommentCountChange}
+                          />
+                        ) : null}
                       </div>
                     </div>
                   </div>

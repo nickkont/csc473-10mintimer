@@ -144,35 +144,7 @@ export default function HomePage(): JSX.Element {
           </button>
         </section>
 
-        {/* How it works */}
-        <section className="how-section">
-          <div className="how-title">How it works</div>
-          <div className="how-steps">
-            <div className="how-step">
-              <div className="how-step-num">1</div>
-              <div className="how-step-text">
-                <strong>Pick a market</strong>
-                <span>Browse events across sports, politics, CCNY, economics and more.</span>
-              </div>
-            </div>
-            <div className="how-step">
-              <div className="how-step-num">2</div>
-              <div className="how-step-text">
-                <strong>Buy YES or NO</strong>
-                <span>Each share costs between $0.01–$0.99. The price reflects the crowd's probability.</span>
-              </div>
-            </div>
-            <div className="how-step">
-              <div className="how-step-num">3</div>
-              <div className="how-step-text">
-                <strong>Collect your payout</strong>
-                <span>Winning shares pay out $1.00 each when the market resolves.</span>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* Featured markets */}
+        {/* Featured markets — directly below "Scroll to explore" */}
         <section id="featured" className="slideshow-section container">
           <div className="slideshow-label">Featured markets</div>
           <div className="cards-scroll">
@@ -202,6 +174,34 @@ export default function HomePage(): JSX.Element {
           </div>
           <div className="slideshow-nav">
             <Link className="events-cta" to="/events">View all markets →</Link>
+          </div>
+        </section>
+
+        {/* How it works */}
+        <section className="how-section">
+          <div className="how-title">How it works</div>
+          <div className="how-steps">
+            <div className="how-step">
+              <div className="how-step-num">1</div>
+              <div className="how-step-text">
+                <strong>Pick a market</strong>
+                <span>Browse events across sports, politics, CCNY, economics and more.</span>
+              </div>
+            </div>
+            <div className="how-step">
+              <div className="how-step-num">2</div>
+              <div className="how-step-text">
+                <strong>Buy YES or NO</strong>
+                <span>Each share costs between $0.01–$1.00. The price reflects the crowd's probability.</span>
+              </div>
+            </div>
+            <div className="how-step">
+              <div className="how-step-num">3</div>
+              <div className="how-step-text">
+                <strong>Collect your payout</strong>
+                <span>Winning shares pay out $1.00 each when the market resolves.</span>
+              </div>
+            </div>
           </div>
         </section>
       </main>

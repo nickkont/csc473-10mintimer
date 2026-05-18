@@ -1,19 +1,16 @@
-import {
-  collection,
-  doc,
-  getDocs,
-  orderBy,
-  query,
-  runTransaction,
-  serverTimestamp,
-} from "firebase/firestore";
-import React, { useCallback, useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import ActivityTicker from "../components/ActivityTicker";
 import AppLayout from "../components/AppLayout";
+import Sparkline from "../components/Sparkline";
 import { useAuth } from "../context/AuthContext";
-import { db } from "../firebase";
 import { loginWithRedirect } from "../lib/siteUrls";
+import { placeBet, sellShares } from "../api/bets";
+import { claimPayout as apiClaimPayout, getPriceHistory, listMarkets } from "../api/markets";
+import type { PriceTick } from "../api/markets";
+import { getMyPositions } from "../api/users";
 import "../../../styles.css";
+import "../../../events-extras.css";
 
 export interface Market {
   id: string;
@@ -28,23 +25,20 @@ export interface Market {
   totalTrades: number;
 }
 
-const CATEGORY_EMOJI: Record<string, string> = {
-  ccny: "🎓",
-  sports: "🏆",
-  politics: "🏛️",
-  economics: "📈",
-  culture: "🎭",
-  climate: "🌍",
-  other: "📊",
-};
-
 interface PositionRow {
   marketId: string;
   yesShares: number;
   noShares: number;
+  yesCost?: number;
+  noCost?: number;
   payoutClaimed?: boolean;
   claimedAmount?: number;
 }
+
+const CATEGORY_EMOJI: Record<string, string> = {
+  ccny: "🎓", sports: "🏆", politics: "🏛️",
+  economics: "📈", culture: "🎭", climate: "🌍", other: "📊",
+};
 
 function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
@@ -57,79 +51,129 @@ function closesLabel(m: Market): string {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
+const ALL_CATEGORIES = ["ccny", "sports", "politics", "economics", "culture", "climate"] as const;
+type CatFilter = "all" | typeof ALL_CATEGORIES[number];
+
 export default function EventsPage(): JSX.Element {
   const { user, balance: navBalance } = useAuth();
   const navigate = useNavigate();
+
   const [markets, setMarkets] = useState<Market[]>([]);
   const [positions, setPositions] = useState<Array<PositionRow & { title: string; market?: Market }>>([]);
   const [loading, setLoading] = useState(true);
-  const [catFilter, setCatFilter] = useState<"all" | "ccny" | "sports" | "politics" | "economics" | "culture" | "climate">("all");
+  const [catFilter, setCatFilter] = useState<CatFilter>("all");
   const [userBalance, setUserBalance] = useState(0);
+  const [histories, setHistories] = useState<Record<string, PriceTick[]>>({});
+  const [showClosed, setShowClosed] = useState(false);
+  const [showClosedCats, setShowClosedCats] = useState<Record<string, boolean>>({});
+  const [flashMarkets, setFlashMarkets] = useState<Record<string, "up" | "down">>({});
+  const prevPricesRef = useRef<Record<string, number>>({});
 
+  // Trade modal state
   const [modalOpen, setModalOpen] = useState(false);
   const [pendingMarketId, setPendingMarketId] = useState("");
   const [pendingSide, setPendingSide] = useState<"yes" | "no">("yes");
   const [pendingPrice, setPendingPrice] = useState(0);
+  const [pendingAction, setPendingAction] = useState<"buy" | "sell">("buy");
+  const [pendingMaxShares, setPendingMaxShares] = useState(0);
+  const [pendingCostBasis, setPendingCostBasis] = useState(0);
   const [shares, setShares] = useState(1);
   const [modalMsg, setModalMsg] = useState("");
   const [modalMsgClass, setModalMsgClass] = useState("");
 
-  useEffect(() => {
-    setUserBalance(navBalance);
-  }, [navBalance]);
+  useEffect(() => { setUserBalance(navBalance); }, [navBalance]);
 
-  const loadMarkets = useCallback(async (): Promise<void> => {
-    setLoading(true);
+  const loadMarkets = useCallback(async (silent = false): Promise<void> => {
+    if (!silent) setLoading(true);
     try {
-      const q = query(collection(db, "markets"), orderBy("createdAt", "desc"));
-      const snap = await getDocs(q);
-      const list: Market[] = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Market));
+      const list = (await listMarkets()) as unknown as Market[];
+
+      // Detect price changes and flash affected cards
+      const flashes: Record<string, "up" | "down"> = {};
+      for (const m of list) {
+        const prev = prevPricesRef.current[m.id];
+        if (prev !== undefined && Math.abs(m.yesPrice - prev) > 0.001) {
+          flashes[m.id] = m.yesPrice > prev ? "up" : "down";
+        }
+      }
+      prevPricesRef.current = Object.fromEntries(list.map((m) => [m.id, m.yesPrice]));
+      if (Object.keys(flashes).length > 0) {
+        setFlashMarkets(flashes);
+        setTimeout(() => setFlashMarkets({}), 1200);
+      }
+
       setMarkets(list);
       if (user) {
-        const pSnap = await getDocs(collection(db, "users", user.uid, "positions"));
-        const rows: Array<PositionRow & { title: string; market?: Market }> = [];
-        pSnap.docs.forEach((docSnap) => {
-          const pos = docSnap.data() as PositionRow;
+        const posList = await getMyPositions();
+        setPositions(posList.map((pos) => {
           const market = list.find((m) => m.id === pos.marketId);
-          rows.push({
-            ...pos,
-            title: market ? market.title : pos.marketId,
-            market,
-          });
-        });
-        setPositions(rows);
+          return { ...pos, title: market ? market.title : pos.marketId, market };
+        }));
       } else {
         setPositions([]);
       }
     } catch {
-      setMarkets([]);
+      if (!silent) setMarkets([]);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [user]);
 
+  const loadHistories = useCallback(async (ids: string[]): Promise<void> => {
+    const results = await Promise.allSettled(
+      ids.map((id) => getPriceHistory(id, 30).then((h) => [id, h] as const))
+    );
+    const next: Record<string, PriceTick[]> = {};
+    for (const r of results) {
+      if (r.status === "fulfilled") {
+        const [id, h] = r.value;
+        next[id] = h;
+      }
+    }
+    setHistories(next);
+  }, []);
+
+  useEffect(() => { void loadMarkets(); }, [loadMarkets]);
+
   useEffect(() => {
-    void loadMarkets();
-  }, [loadMarkets]);
+    if (markets.length === 0) return;
+    const ids = markets.map((m) => m.id);
+    void loadHistories(ids);
+    const interval = setInterval(() => {
+      void loadHistories(ids);
+      void loadMarkets(true);
+    }, 10000);
+    return () => clearInterval(interval);
+  }, [markets.length, loadHistories, loadMarkets]);
 
   const openTrade = (marketId: string, side: "yes" | "no"): void => {
-    if (!user) {
-      navigate(loginWithRedirect("/events"));
-      return;
-    }
+    if (!user) { navigate(loginWithRedirect("/events")); return; }
     const market = markets.find((m) => m.id === marketId);
     if (!market || market.status === "resolved") return;
-    const price = side === "yes" ? market.yesPrice : market.noPrice;
     setPendingMarketId(marketId);
     setPendingSide(side);
-    setPendingPrice(price);
+    setPendingPrice(side === "yes" ? market.yesPrice : market.noPrice);
+    setPendingAction("buy");
+    setPendingMaxShares(0);
+    setPendingCostBasis(0);
     setShares(1);
     setModalMsg("");
     setModalOpen(true);
   };
 
-  const closeTrade = (): void => {
-    setModalOpen(false);
+  const openSell = (marketId: string, side: "yes" | "no", maxShares: number, costBasis: number): void => {
+    if (!user) { navigate(loginWithRedirect("/events")); return; }
+    const market = markets.find((m) => m.id === marketId);
+    if (!market || market.status === "resolved" || maxShares < 1) return;
+    setPendingMarketId(marketId);
+    setPendingSide(side);
+    setPendingPrice(side === "yes" ? market.yesPrice : market.noPrice);
+    setPendingAction("sell");
+    setPendingMaxShares(maxShares);
+    setPendingCostBasis(costBasis);
+    setShares(maxShares);
+    setModalMsg("");
+    setModalOpen(true);
   };
 
   const totalCost = pendingPrice * Math.max(1, shares);
@@ -137,126 +181,32 @@ export default function EventsPage(): JSX.Element {
   const executeTrade = async (): Promise<void> => {
     if (!user || !pendingMarketId) return;
     const n = Math.max(1, shares);
-    const cost = parseFloat((pendingPrice * n).toFixed(2));
-    if (cost > userBalance) {
-      setModalMsg("Insufficient balance.");
-      setModalMsgClass("error");
-      return;
-    }
     setModalMsg("Processing…");
     setModalMsgClass("");
-    const uid = user.uid;
-    const userRef = doc(db, "users", uid);
-    const marketRef = doc(db, "markets", pendingMarketId);
-    const posRef = doc(db, "users", uid, "positions", pendingMarketId);
-    const side = pendingSide;
-    const marketId = pendingMarketId;
-
     try {
-      const newBalance = await runTransaction(db, async (t) => {
-        const [userSnap, posSnap, marketSnap] = await Promise.all([
-          t.get(userRef),
-          t.get(posRef),
-          t.get(marketRef),
-        ]);
-        const bal = userSnap.exists() ? Number(userSnap.data()?.walletBalance) || 0 : 0;
-        if (cost > bal) throw new Error("Insufficient balance.");
-        const nb = parseFloat((bal - cost).toFixed(2));
-        const rawPos = posSnap.exists() ? posSnap.data() : undefined;
-        const posData = rawPos ?? { yesShares: 0, noShares: 0 };
-        const newYes = Number(posData.yesShares) || 0;
-        const newNo = Number(posData.noShares) || 0;
-        const ny = newYes + (side === "yes" ? n : 0);
-        const nn = newNo + (side === "no" ? n : 0);
-        const trades = marketSnap.exists() ? Number(marketSnap.data()?.totalTrades) || 0 : 0;
-
-        t.update(userRef, { walletBalance: nb });
-        t.set(
-          posRef,
-          {
-            marketId,
-            yesShares: ny,
-            noShares: nn,
-            updatedAt: serverTimestamp(),
-          },
-          { merge: true }
-        );
-        const txRef = doc(collection(db, "users", uid, "transactions"));
-        t.set(txRef, {
-          type: "trade",
-          amount: -cost,
-          description:
-            "Bought " +
-            n +
-            " " +
-            side.toUpperCase() +
-            " on: " +
-            (marketSnap.exists() ? marketSnap.data()?.title : marketId),
-          balance: nb,
-          timestamp: serverTimestamp(),
-        });
-        t.update(marketRef, { totalTrades: trades + 1 });
-        return nb;
-      });
-      setUserBalance(newBalance);
-      setModalMsg("Trade placed!");
+      if (pendingAction === "sell") {
+        const { newBalance } = await sellShares({ marketId: pendingMarketId, side: pendingSide, shares: n });
+        setUserBalance(newBalance);
+        setModalMsg("Sold!");
+      } else {
+        const { newBalance } = await placeBet({ marketId: pendingMarketId, side: pendingSide, shares: n });
+        setUserBalance(newBalance);
+        setModalMsg("Trade placed!");
+      }
       setModalMsgClass("success");
-      await loadMarkets();
+      await loadMarkets(true);
       setTimeout(() => setModalOpen(false), 800);
     } catch (e) {
-      const err = e as Error;
-      setModalMsg(err.message || "Trade failed.");
+      const msg = (e as Error).message || "Trade failed.";
+      setModalMsg(msg);
       setModalMsgClass("error");
     }
   };
 
   const claimPayout = async (marketId: string): Promise<void> => {
     if (!user) return;
-    const uid = user.uid;
-    const userRef = doc(db, "users", uid);
-    const posRef = doc(db, "users", uid, "positions", marketId);
-    const marketRef = doc(db, "markets", marketId);
-
     try {
-      const newBalance = await runTransaction(db, async (t) => {
-        const [userSnap, posSnap, marketSnap] = await Promise.all([
-          t.get(userRef),
-          t.get(posRef),
-          t.get(marketRef),
-        ]);
-        if (!posSnap.exists()) throw new Error("Position not found.");
-        if (!marketSnap.exists()) throw new Error("Market not found.");
-        const mdata = marketSnap.data() as { status?: string; outcome?: string; title?: string };
-        if (mdata.status !== "resolved" || !mdata.outcome) throw new Error("Market is not resolved yet.");
-        const posData = posSnap.data() as Record<string, unknown>;
-        if (posData.payoutClaimed === true) throw new Error("Payout already claimed.");
-        const outcome = mdata.outcome as "yes" | "no";
-        const winShares =
-          outcome === "yes" ? Number(posData.yesShares) || 0 : Number(posData.noShares) || 0;
-        if (winShares <= 0) throw new Error("No winning shares to claim.");
-        const payout = parseFloat(winShares.toFixed(2));
-        const bal = userSnap.exists() ? Number(userSnap.data()?.walletBalance) || 0 : 0;
-        const nb = parseFloat((bal + payout).toFixed(2));
-        const title = mdata.title || marketId;
-        const posUpdate: Record<string, unknown> = {
-          payoutClaimed: true,
-          claimedAmount: payout,
-          claimedAt: serverTimestamp(),
-        };
-        if (outcome === "yes") posUpdate.yesShares = 0;
-        else posUpdate.noShares = 0;
-        t.update(userRef, { walletBalance: nb });
-        t.set(posRef, posUpdate, { merge: true });
-        const txRef = doc(collection(db, "users", uid, "transactions"));
-        t.set(txRef, {
-          type: "payout",
-          amount: payout,
-          description: "Payout from: " + title,
-          balance: nb,
-          timestamp: serverTimestamp(),
-        });
-        return nb;
-      });
+      const { newBalance } = await apiClaimPayout(marketId);
       setUserBalance(newBalance);
       await loadMarkets();
     } catch (e) {
@@ -264,113 +214,186 @@ export default function EventsPage(): JSX.Element {
     }
   };
 
-  const categories = ["ccny", "sports", "politics", "economics", "culture", "climate"] as const;
-  const byCategory: Record<string, Market[]> = { ccny: [], sports: [], politics: [], economics: [], culture: [], climate: [], other: [] };
-  markets.forEach((m) => {
-    const cat = categories.includes(m.category as "ccny") ? m.category : "other";
-    byCategory[cat].push(m);
-  });
-  const sections = [...categories, ...(byCategory.other.length ? ["other"] : [])];
+  // ── Positions helpers ────────────────────────────────────────────────────────
 
-  function filterCat(cat: typeof catFilter): void {
-    setCatFilter(cat);
-  }
+  const plClass = (pl: number): string => (pl > 0.005 ? "up" : pl < -0.005 ? "down" : "flat");
+  const plLabel = (pl: number): string => (pl >= 0 ? `+$${pl.toFixed(2)}` : `-$${Math.abs(pl).toFixed(2)}`);
 
-  return (
-    <AppLayout>
-      <div className="cat-bar">
-        <div className="cat-bar-inner">
-          <div className={"cat-tab" + (catFilter === "all" ? " active" : "")} onClick={() => filterCat("all")}>
-            All markets
-          </div>
-          <div className={"cat-tab" + (catFilter === "ccny" ? " active" : "")} onClick={() => filterCat("ccny")}>
-            CCNY
-          </div>
-          <div className={"cat-tab" + (catFilter === "sports" ? " active" : "")} onClick={() => filterCat("sports")}>
-            Sports
-          </div>
-          <div className={"cat-tab" + (catFilter === "politics" ? " active" : "")} onClick={() => filterCat("politics")}>
-            Politics
-          </div>
-          <div className={"cat-tab" + (catFilter === "economics" ? " active" : "")} onClick={() => filterCat("economics")}>
-            Economics
-          </div>
-          <div className={"cat-tab" + (catFilter === "culture" ? " active" : "")} onClick={() => filterCat("culture")}>
-            Culture
-          </div>
-          <div className={"cat-tab" + (catFilter === "climate" ? " active" : "")} onClick={() => filterCat("climate")}>
-            Climate
-          </div>
+  const isClosed = (p: PositionRow & { market?: Market }): boolean => {
+    const resolved = p.market?.status === "resolved";
+    const outcome = p.market?.outcome ?? null;
+    const winShares = resolved && outcome ? (outcome === "yes" ? p.yesShares || 0 : p.noShares || 0) : 0;
+    if (resolved && (p.payoutClaimed || winShares === 0)) return true;
+    if ((p.yesShares || 0) === 0 && (p.noShares || 0) === 0) return true;
+    return false;
+  };
+
+  const renderPositionCard = (p: PositionRow & { title: string; market?: Market }): JSX.Element => {
+    const market = p.market;
+    const resolved = market?.status === "resolved";
+    const outcome = market?.outcome ?? null;
+    const winShares = resolved && outcome ? (outcome === "yes" ? p.yesShares || 0 : p.noShares || 0) : 0;
+    const alreadyClaimed = p.payoutClaimed === true;
+    const yesPrice = market?.yesPrice ?? 0;
+    const noPrice = market?.noPrice ?? 0;
+    const yesValue = parseFloat(((p.yesShares || 0) * yesPrice).toFixed(2));
+    const noValue  = parseFloat(((p.noShares  || 0) * noPrice).toFixed(2));
+    const yesPaid  = typeof p.yesCost === "number" ? p.yesCost : null;
+    const noPaid   = typeof p.noCost  === "number" ? p.noCost  : null;
+    const yesPL    = yesPaid !== null ? parseFloat((yesValue - yesPaid).toFixed(2)) : null;
+    const noPL     = noPaid  !== null ? parseFloat((noValue  - noPaid).toFixed(2))  : null;
+
+    return (
+      <div key={p.marketId} className="position-card" data-market-id={p.marketId}>
+        <div className="position-card-head">
+          <div className="position-card-title">{p.title}</div>
+          <Link to={`/events/${p.marketId}`} className="position-card-view">View market →</Link>
         </div>
-      </div>
 
-      <div className="page-layout">
-        <aside className="sidebar">
-          <div className="sidebar-title">Browse</div>
-          <div className={"sidebar-link" + (catFilter === "all" ? " active" : "")} onClick={() => filterCat("all")}>
-            All markets
-          </div>
-          <div className={"sidebar-link" + (catFilter === "ccny" ? " active" : "")} onClick={() => filterCat("ccny")}>
-            CCNY
-          </div>
-          <div className={"sidebar-link" + (catFilter === "sports" ? " active" : "")} onClick={() => filterCat("sports")}>
-            Sports
-          </div>
-          <div className={"sidebar-link" + (catFilter === "politics" ? " active" : "")} onClick={() => filterCat("politics")}>
-            Politics
-          </div>
-          <div className={"sidebar-link" + (catFilter === "economics" ? " active" : "")} onClick={() => filterCat("economics")}>
-            Economics
-          </div>
-          <div className={"sidebar-link" + (catFilter === "culture" ? " active" : "")} onClick={() => filterCat("culture")}>
-            Culture
-          </div>
-          <div className={"sidebar-link" + (catFilter === "climate" ? " active" : "")} onClick={() => filterCat("climate")}>
-            Climate
-          </div>
-        </aside>
-
-        <main className="feed">
-          {user && positions.length > 0 ? (
-            <div id="positions-section" className="feed-section">
-              <div className="feed-section-title">My Positions</div>
-              <div id="positions-list">
-                {positions.map((p) => {
-                  const market = p.market;
-                  const resolved = market ? market.status === "resolved" : false;
-                  const outcome = market?.outcome ?? null;
-                  let winShares = 0;
-                  if (resolved && outcome) {
-                    winShares = outcome === "yes" ? p.yesShares || 0 : p.noShares || 0;
-                  }
-                  const alreadyClaimed = p.payoutClaimed === true;
-                  return (
-                    <div key={p.marketId} className="position-row" data-market-id={p.marketId}>
-                      <div className="pos-title">{p.title}</div>
-                      <div className="pos-shares">
-                        {p.yesShares > 0 ? <span className="pos-yes">YES ×{p.yesShares}</span> : null}
-                        {p.noShares > 0 ? <span className="pos-no">NO ×{p.noShares}</span> : null}
-                      </div>
-                      {!resolved && p.market ? (
-                        <span className="pos-value">
-                          Est. ${((p.yesShares || 0) * p.market.yesPrice + (p.noShares || 0) * p.market.noPrice).toFixed(2)}
-                        </span>
-                      ) : null}
-                      {resolved && outcome && alreadyClaimed && typeof p.claimedAmount === "number" ? (
-                        <span className="claimed-label">Claimed ${p.claimedAmount.toFixed(2)}</span>
-                      ) : null}
-                      {resolved && outcome && !alreadyClaimed && winShares > 0 ? (
-                        <button type="button" className="claim-btn" onClick={() => void claimPayout(p.marketId)}>
-                          Claim ${winShares.toFixed(2)}
-                        </button>
-                      ) : null}
-                    </div>
-                  );
-                })}
+        <div className="position-card-rows">
+          {(p.yesShares || 0) > 0 ? (
+            <div className="position-side-block">
+              <div className="position-side-row">
+                <span className="position-side-label yes">YES</span>
+                <span className="position-side-shares">×{p.yesShares}</span>
+                <span className="position-side-price">@ ${yesPrice.toFixed(2)}</span>
+                <span className="position-side-value">${yesValue.toFixed(2)}</span>
+                {!resolved ? (
+                  <button type="button" className="position-side-sell"
+                    onClick={() => openSell(p.marketId, "yes", p.yesShares || 0, yesPaid ?? 0)}>
+                    Sell
+                  </button>
+                ) : null}
+              </div>
+              <div className="position-side-meta">
+                <span>Paid: {yesPaid !== null ? `$${yesPaid.toFixed(2)}` : "—"}</span>
+                <span className={"position-side-pl " + (yesPL !== null ? plClass(yesPL) : "flat")}>
+                  P/L: {yesPL !== null ? plLabel(yesPL) : "—"}
+                </span>
               </div>
             </div>
           ) : null}
 
+          {(p.noShares || 0) > 0 ? (
+            <div className="position-side-block">
+              <div className="position-side-row">
+                <span className="position-side-label no">NO</span>
+                <span className="position-side-shares">×{p.noShares}</span>
+                <span className="position-side-price">@ ${noPrice.toFixed(2)}</span>
+                <span className="position-side-value">${noValue.toFixed(2)}</span>
+                {!resolved ? (
+                  <button type="button" className="position-side-sell"
+                    onClick={() => openSell(p.marketId, "no", p.noShares || 0, noPaid ?? 0)}>
+                    Sell
+                  </button>
+                ) : null}
+              </div>
+              <div className="position-side-meta">
+                <span>Paid: {noPaid !== null ? `$${noPaid.toFixed(2)}` : "—"}</span>
+                <span className={"position-side-pl " + (noPL !== null ? plClass(noPL) : "flat")}>
+                  P/L: {noPL !== null ? plLabel(noPL) : "—"}
+                </span>
+              </div>
+            </div>
+          ) : null}
+        </div>
+
+        {resolved && outcome && alreadyClaimed && typeof p.claimedAmount === "number" ? (
+          <div className="position-card-foot">
+            <span className="claimed-label">Claimed ${p.claimedAmount.toFixed(2)}</span>
+          </div>
+        ) : null}
+        {resolved && outcome && !alreadyClaimed && winShares > 0 ? (
+          <div className="position-card-foot">
+            <button type="button" className="claim-btn" onClick={() => void claimPayout(p.marketId)}>
+              Claim ${winShares.toFixed(2)}
+            </button>
+          </div>
+        ) : null}
+      </div>
+    );
+  };
+
+  // ── Market grid helpers ──────────────────────────────────────────────────────
+
+  const byCategory: Record<string, Market[]> = { ccny: [], sports: [], politics: [], economics: [], culture: [], climate: [], other: [] };
+  markets.forEach((m) => {
+    const cat = (ALL_CATEGORIES as readonly string[]).includes(m.category) ? m.category : "other";
+    byCategory[cat].push(m);
+  });
+  const sections = [...ALL_CATEGORIES, ...(byCategory.other.length ? ["other"] : [])];
+
+  const openPositions   = positions.filter((p) => !isClosed(p));
+  const closedPositions = positions.filter(isClosed);
+
+  return (
+    <AppLayout>
+      {/* Category bar */}
+      <div className="cat-bar">
+        <div className="cat-bar-inner">
+          {(["all", ...ALL_CATEGORIES] as const).map((cat) => (
+            <div
+              key={cat}
+              className={"cat-tab" + (catFilter === cat ? " active" : "")}
+              onClick={() => setCatFilter(cat)}
+            >
+              {cat === "all" ? "All markets" : capitalize(cat)}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="page-layout">
+        {/* Left sidebar */}
+        <aside className="sidebar">
+          <div className="sidebar-title">Browse</div>
+          {(["all", ...ALL_CATEGORIES] as const).map((cat) => (
+            <div
+              key={cat}
+              className={"sidebar-link" + (catFilter === cat ? " active" : "")}
+              onClick={() => setCatFilter(cat)}
+            >
+              {cat === "all" ? "All markets" : capitalize(cat)}
+            </div>
+          ))}
+        </aside>
+
+        {/* Main feed */}
+        <main className="feed">
+
+          {/* Positions */}
+          {user && positions.length > 0 ? (
+            <div id="positions-section" className="feed-section">
+              <div className="feed-section-title">My Positions</div>
+              <div id="positions-list">
+                {openPositions.length === 0 ? (
+                  <p className="positions-empty">No active positions. Place a trade to get started.</p>
+                ) : (
+                  openPositions.map(renderPositionCard)
+                )}
+              </div>
+              {closedPositions.length > 0 ? (
+                <div className="closed-positions">
+                  <button
+                    type="button"
+                    className="closed-positions-toggle"
+                    onClick={() => setShowClosed((v) => !v)}
+                    aria-expanded={showClosed}
+                  >
+                    <span>{showClosed ? "Hide" : "Show"} closed positions</span>
+                    <span className="closed-positions-count">{closedPositions.length}</span>
+                  </button>
+                  {showClosed ? (
+                    <div className="closed-positions-list">
+                      {closedPositions.map(renderPositionCard)}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
+          {/* Markets feed */}
           <div id="markets-feed">
             {loading ? (
               <p className="markets-loading">Loading markets…</p>
@@ -381,104 +404,151 @@ export default function EventsPage(): JSX.Element {
                 const ms = byCategory[cat];
                 if (!ms.length) return null;
                 if (catFilter !== "all" && catFilter !== cat) return null;
+                const openMs   = ms.filter((m) => m.status !== "resolved");
+                const closedMs = ms.filter((m) => m.status === "resolved");
+
+                const renderCard = (m: Market) => {
+                  const resolved = m.status === "resolved";
+                  return (
+                    <div
+                      key={m.id}
+                      className={"event-card" + (flashMarkets[m.id] === "up" ? " price-flash-up" : flashMarkets[m.id] === "down" ? " price-flash-down" : "")}
+                      data-id={m.id}
+                      onClick={() => navigate(`/events/${m.id}`)}
+                      style={{ cursor: "pointer" }}
+                    >
+                      <div className="event-card-top">
+                        <div className="event-card-icon">
+                          {m.imageUrl
+                            ? <img src={m.imageUrl} alt="" />
+                            : <span>{CATEGORY_EMOJI[m.category] ?? "📊"}</span>}
+                        </div>
+                        <span className={"event-tag " + m.category}>{capitalize(m.category)}</span>
+                        {resolved ? (
+                          <span className={"outcome-badge " + m.outcome}>
+                            {m.outcome === "yes" ? "YES wins" : "NO wins"}
+                          </span>
+                        ) : null}
+                      </div>
+                      <div className="event-question">{m.title}</div>
+                      {histories[m.id] && histories[m.id].length >= 2 ? (
+                        <div className="event-spark">
+                          <Sparkline history={histories[m.id]} side="both" height={40} />
+                        </div>
+                      ) : null}
+                      <div className="event-bottom">
+                        <span className="event-meta">
+                          {m.totalTrades} trades · Closes {closesLabel(m)}
+                        </span>
+                        <div className="event-prices">
+                          {resolved ? (
+                            <span className="resolved-label">Market closed</span>
+                          ) : (
+                            <>
+                              <button type="button" className="trade-btn yes-btn"
+                                onClick={(e) => { e.stopPropagation(); openTrade(m.id, "yes"); }}>
+                                YES <span className="trade-price">${m.yesPrice.toFixed(2)}</span>
+                              </button>
+                              <button type="button" className="trade-btn no-btn"
+                                onClick={(e) => { e.stopPropagation(); openTrade(m.id, "no"); }}>
+                                NO <span className="trade-price">${m.noPrice.toFixed(2)}</span>
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                };
+
                 return (
                   <div key={cat} className="feed-section" data-cat={cat}>
                     <div className="feed-section-title">{capitalize(cat)}</div>
-                    {ms.map((m) => {
-                      const resolved = m.status === "resolved";
-                      return (
-                        <div key={m.id} className="event-card" data-id={m.id} onClick={() => navigate(`/events/${m.id}`)} style={{ cursor: "pointer" }}>
-                          <div className="event-card-top">
-                            <div className="event-card-icon">
-                              {m.imageUrl
-                                ? <img src={m.imageUrl} alt="" />
-                                : <span>{CATEGORY_EMOJI[m.category] ?? "📊"}</span>}
-                            </div>
-                            <span className={"event-tag " + m.category}>{capitalize(m.category)}</span>
-                            {resolved ? (
-                              <span className={"outcome-badge " + m.outcome}>
-                                {m.outcome === "yes" ? "YES wins" : "NO wins"}
-                              </span>
-                            ) : null}
-                          </div>
-                          <div className="event-question">{m.title}</div>
-                          <div className="event-bottom">
-                            <span className="event-meta">
-                              {m.totalTrades} trades · Closes {closesLabel(m)}
-                            </span>
-                            <div className="event-prices">
-                              {resolved ? (
-                                <span className="resolved-label">Market closed</span>
-                              ) : (
-                                <>
-                                  <button type="button" className="trade-btn yes-btn" onClick={(e) => { e.stopPropagation(); openTrade(m.id, "yes"); }}>
-                                    YES <span className="trade-price">${m.yesPrice.toFixed(2)}</span>
-                                  </button>
-                                  <button type="button" className="trade-btn no-btn" onClick={(e) => { e.stopPropagation(); openTrade(m.id, "no"); }}>
-                                    NO <span className="trade-price">${m.noPrice.toFixed(2)}</span>
-                                  </button>
-                                </>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
+                    {openMs.map(renderCard)}
+                    {closedMs.length > 0 ? (
+                      <div className="closed-cat-markets">
+                        <button
+                          type="button"
+                          className="closed-cat-toggle"
+                          onClick={() => setShowClosedCats((prev) => ({ ...prev, [cat]: !prev[cat] }))}
+                        >
+                          <span>{showClosedCats[cat] ? "Hide" : "Show"} closed markets</span>
+                          <span className="closed-cat-count">{closedMs.length}</span>
+                        </button>
+                        {showClosedCats[cat] ? closedMs.map(renderCard) : null}
+                      </div>
+                    ) : null}
                   </div>
                 );
               })
             )}
           </div>
         </main>
+
+        {/* Right rail — live activity */}
+        <aside className="events-activity-rail">
+          <ActivityTicker />
+        </aside>
       </div>
 
+      {/* Trade / Sell modal */}
       <div
         id="trade-modal"
         className="trade-modal-overlay"
         style={{ display: modalOpen ? "flex" : "none" }}
         role="dialog"
         aria-modal="true"
-        onClick={(e) => {
-          if (e.target === e.currentTarget) closeTrade();
-        }}
+        onClick={(e) => { if (e.target === e.currentTarget) setModalOpen(false); }}
       >
         <div className="trade-modal-card">
           <div className="trade-modal-header">
-            <div className="trade-modal-title" id="modal-market-title">
+            <div className="trade-modal-title">
               {markets.find((x) => x.id === pendingMarketId)?.title ?? ""}
             </div>
-            <button type="button" className="trade-modal-close" id="modal-close-btn" aria-label="Close" onClick={closeTrade}>
-              ×
-            </button>
+            <button type="button" className="trade-modal-close" aria-label="Close" onClick={() => setModalOpen(false)}>×</button>
           </div>
           <div className="trade-modal-meta">
-            <span className={"modal-side-badge " + pendingSide} id="modal-side">
-              {pendingSide.toUpperCase()}
-            </span>
-            <span className="modal-price-label" id="modal-price">
-              ${pendingPrice.toFixed(2)} per share
-            </span>
+            <span className={"modal-side-badge " + pendingSide}>{pendingSide.toUpperCase()}</span>
+            <span className="modal-price-label">${pendingPrice.toFixed(2)} per share</span>
           </div>
           <div className="trade-modal-balance">
-            Balance: <strong id="modal-user-balance">${userBalance.toFixed(2)}</strong>
+            Balance: <strong>${userBalance.toFixed(2)}</strong>
           </div>
           <div className="trade-modal-field">
-            <label htmlFor="modal-shares">Shares</label>
+            <label htmlFor="modal-shares">
+              Shares{pendingAction === "sell" ? ` (max ${pendingMaxShares})` : ""}
+            </label>
             <input
-              type="number"
-              id="modal-shares"
-              min={1}
+              type="number" id="modal-shares" min={1}
+              max={pendingAction === "sell" ? pendingMaxShares : undefined}
               value={shares}
-              onChange={(e) => setShares(Math.max(1, parseInt(e.target.value, 10) || 1))}
+              onChange={(e) => {
+                const v = Math.max(1, parseInt(e.target.value, 10) || 1);
+                setShares(pendingAction === "sell" ? Math.min(v, pendingMaxShares) : v);
+              }}
             />
           </div>
           <div className="trade-modal-cost">
-            Total cost: <strong id="modal-cost">${totalCost.toFixed(2)}</strong>
+            {pendingAction === "sell" ? "You'll receive: " : "Total cost: "}
+            <strong>${totalCost.toFixed(2)}</strong>
           </div>
-          <button type="button" className="trade-modal-buy-btn" id="modal-buy-btn" onClick={() => void executeTrade()}>
-            Buy
+          {pendingAction === "sell" && pendingMaxShares > 0 ? (() => {
+            const sellN = Math.min(Math.max(1, shares), pendingMaxShares);
+            const costPortion = pendingCostBasis * (sellN / pendingMaxShares);
+            const projectedPL = parseFloat((totalCost - costPortion).toFixed(2));
+            const cls = projectedPL > 0.005 ? "up" : projectedPL < -0.005 ? "down" : "flat";
+            const label = projectedPL >= 0 ? `+$${projectedPL.toFixed(2)}` : `-$${Math.abs(projectedPL).toFixed(2)}`;
+            return (
+              <div className={"trade-modal-pl " + cls}>
+                <span>Cost basis (this sale): ${costPortion.toFixed(2)}</span>
+                <span>Projected P/L: <strong>{label}</strong></span>
+              </div>
+            );
+          })() : null}
+          <button type="button" className="trade-modal-buy-btn" onClick={() => void executeTrade()}>
+            {pendingAction === "sell" ? "Sell" : "Buy"}
           </button>
-          <div className={"modal-msg" + (modalMsgClass ? " " + modalMsgClass : "")} id="modal-msg">
+          <div className={"modal-msg" + (modalMsgClass ? " " + modalMsgClass : "")}>
             {modalMsg}
           </div>
         </div>

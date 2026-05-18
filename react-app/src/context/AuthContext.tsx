@@ -1,7 +1,7 @@
 import type { User } from "firebase/auth";
 import { onAuthStateChanged, signOut } from "firebase/auth";
-import { doc, getDoc } from "firebase/firestore";
-import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { doc, onSnapshot } from "firebase/firestore";
+import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { auth, db } from "../firebase";
 
 type AuthCtx = {
@@ -19,26 +19,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }): JSX.E
   const [balance, setBalance] = useState(0);
   const [role, setRole] = useState("user");
   const [loading, setLoading] = useState(true);
+  const unsubUserDoc = useRef<(() => void) | null>(null);
 
   useEffect(() => {
-    return onAuthStateChanged(auth, async (u) => {
+    return onAuthStateChanged(auth, (u) => {
       setUser(u);
+
+      // Cancel any previous user-doc listener
+      if (unsubUserDoc.current) {
+        unsubUserDoc.current();
+        unsubUserDoc.current = null;
+      }
+
       if (!u) {
         setBalance(0);
         setRole("user");
         setLoading(false);
         return;
       }
-      try {
-        const snap = await getDoc(doc(db, "users", u.uid));
-        const data = snap.exists() ? snap.data() : {};
-        setBalance(typeof data.walletBalance === "number" ? data.walletBalance : 0);
-        setRole(typeof data.role === "string" ? data.role : "user");
-      } catch {
-        setBalance(0);
-        setRole("user");
-      }
-      setLoading(false);
+
+      // Live listener on the user doc — balance & role update instantly
+      unsubUserDoc.current = onSnapshot(
+        doc(db, "users", u.uid),
+        (snap) => {
+          const data = snap.exists() ? snap.data() : {};
+          setBalance(typeof data.walletBalance === "number" ? data.walletBalance : 0);
+          setRole(typeof data.role === "string" ? data.role : "user");
+          setLoading(false);
+        },
+        () => {
+          setBalance(0);
+          setRole("user");
+          setLoading(false);
+        }
+      );
     });
   }, []);
 
