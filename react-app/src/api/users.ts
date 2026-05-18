@@ -1,4 +1,9 @@
-import { api } from "./client";
+import { deleteUser } from "firebase/auth";
+import {
+  collection, deleteDoc, doc, getDoc, getDocs,
+  limit as fsLimit, orderBy, query, serverTimestamp, setDoc, updateDoc,
+} from "firebase/firestore";
+import { auth, db } from "../firebase";
 
 export interface MeDoc {
   uid: string;
@@ -42,33 +47,63 @@ export interface PublicProfile {
 }
 
 export async function getMe(): Promise<MeDoc> {
-  const { data } = await api.get<MeDoc>("/users/me");
-  return data;
+  const user = auth.currentUser;
+  if (!user) throw new Error("Not authenticated");
+  const snap = await getDoc(doc(db, "users", user.uid));
+  return { uid: user.uid, ...(snap.exists() ? snap.data() : {}) } as MeDoc;
 }
 
 export async function getMyPositions(): Promise<PositionDoc[]> {
-  const { data } = await api.get<{ positions: PositionDoc[] }>("/users/me/positions");
-  return data.positions;
+  const user = auth.currentUser;
+  if (!user) return [];
+  const snap = await getDocs(collection(db, "users", user.uid, "positions"));
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() } as PositionDoc));
 }
 
-export async function getMyTransactions(limit = 50): Promise<TransactionDoc[]> {
-  const { data } = await api.get<{ transactions: TransactionDoc[] }>(`/users/me/transactions?limit=${limit}`);
-  return data.transactions;
+export async function getMyTransactions(lim = 50): Promise<TransactionDoc[]> {
+  const user = auth.currentUser;
+  if (!user) return [];
+  const snap = await getDocs(
+    query(collection(db, "users", user.uid, "transactions"), orderBy("timestamp", "desc"), fsLimit(lim))
+  );
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() } as TransactionDoc));
 }
 
 export async function getPublicProfile(uid: string): Promise<PublicProfile> {
-  const { data } = await api.get<PublicProfile>(`/users/${uid}/profile`);
-  return data;
+  const snap = await getDoc(doc(db, "users", uid));
+  const data = snap.exists() ? snap.data() : {};
+  return {
+    uid,
+    firstName: String(data.firstName ?? ""),
+    lastName: String(data.lastName ?? ""),
+    username: String(data.username ?? ""),
+    bio: String(data.bio ?? ""),
+    role: String(data.role ?? "user"),
+  };
 }
 
 export async function createMe(input: { email: string; displayName: string }): Promise<void> {
-  await api.post("/users", input);
+  const user = auth.currentUser;
+  if (!user) return;
+  await setDoc(doc(db, "users", user.uid), {
+    email: input.email,
+    displayName: input.displayName,
+    walletBalance: 0,
+    role: "user",
+    createdAt: serverTimestamp(),
+  }, { merge: true });
 }
 
 export async function updateMe(updates: Partial<Omit<MeDoc, "uid" | "walletBalance" | "role">>): Promise<void> {
-  await api.patch("/users/me", updates);
+  const user = auth.currentUser;
+  if (!user) throw new Error("Not authenticated");
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await updateDoc(doc(db, "users", user.uid), updates as any);
 }
 
 export async function deleteMe(): Promise<void> {
-  await api.delete("/users/me");
+  const user = auth.currentUser;
+  if (!user) throw new Error("Not authenticated");
+  await deleteDoc(doc(db, "users", user.uid));
+  await deleteUser(user);
 }

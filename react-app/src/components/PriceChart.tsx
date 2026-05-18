@@ -77,7 +77,7 @@ export default function PriceChart({ history, side }: Props): JSX.Element {
               fontSize: 12,
             }}
             labelStyle={{ color: "rgba(255,255,255,0.6)" }}
-            formatter={(v: number) => [`$${v.toFixed(2)}`, side.toUpperCase()]}
+            formatter={(v: unknown) => [`$${Number(v).toFixed(2)}`, side.toUpperCase()]}
           />
           <Area
             type="monotone"

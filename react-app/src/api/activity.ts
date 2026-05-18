@@ -1,5 +1,3 @@
-import { api } from "./client";
-
 export interface ActivityItem {
   id: string;
   type: "bet" | "payout" | "resolve";
@@ -14,7 +12,6 @@ export interface ActivityItem {
   timestamp?: { seconds: number; nanoseconds?: number };
 }
 
-export async function listActivity(limit = 25): Promise<ActivityItem[]> {
-  const { data } = await api.get<{ items: ActivityItem[] }>(`/activity?limit=${limit}`);
-  return data.items;
+export async function listActivity(_limit = 25): Promise<ActivityItem[]> {
+  return [];
 }
