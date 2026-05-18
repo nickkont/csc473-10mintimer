@@ -1,10 +1,18 @@
 import { onAuthStateChanged } from "firebase/auth";
+import {
+  addDoc,
+  collection,
+  onSnapshot,
+  orderBy,
+  query,
+  serverTimestamp,
+} from "firebase/firestore";
 import type { User } from "firebase/auth";
 import React, { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import AppLayout from "../components/AppLayout";
-import { auth } from "../firebase";
-import { createPost, listPosts } from "../api/posts";
+import { useToast } from "../context/ToastContext";
+import { auth, db } from "../firebase";
 import { loginWithRedirect } from "../lib/siteUrls";
 import "../../../styles.css";
 import "../../../socialv2.css";
@@ -38,9 +46,9 @@ function formatTime(minutesAgo: number): string {
   return `${Math.floor(minutesAgo / 1440)}d`;
 }
 
-function timestampToMinutesAgo(ts: { seconds?: number } | null | undefined): number {
-  if (!ts || typeof ts.seconds !== "number") return 0;
-  const diffMs = Date.now() - ts.seconds * 1000;
+function timestampToMinutesAgo(ts: { toDate?: () => Date } | null | undefined): number {
+  if (!ts || typeof ts.toDate !== "function") return 0;
+  const diffMs = Date.now() - ts.toDate().getTime();
   return Math.max(0, Math.floor(diffMs / 60000));
 }
 
@@ -79,6 +87,7 @@ function getAuthorName(u: User | null): string {
 
 export default function SocialPage(): JSX.Element {
   const navigate = useNavigate();
+  const toast = useToast();
   const [posts, setPosts] = useState<PostVM[]>([]);
   const [activeFilter, setActiveFilter] = useState<TimeFilter>("Now");
   const [user, setUser] = useState<User | null>(null);
@@ -98,32 +107,31 @@ export default function SocialPage(): JSX.Element {
     }
   }, []);
 
-  const loadPosts = useCallback(async (): Promise<void> => {
-    try {
-      const list = await listPosts(100);
-      setPosts(
-        list.map((p) => ({
-          id: p.id,
-          name: String(p.authorName || "Anonymous"),
-          initials: String(p.authorInitials || "?"),
-          minutesAgo: timestampToMinutesAgo(p.createdAt),
-          text: String(p.text || ""),
-          image: p.image ?? null,
-          liked: false,
-          likes: Number(p.likes || 0),
-          comments: Number(p.comments || 0),
-        }))
-      );
-    } catch {
-      setMsg("Could not load social posts right now.");
-    }
-  }, []);
-
   useEffect(() => {
-    void loadPosts();
-    const interval = setInterval(() => void loadPosts(), 15000);
-    return () => clearInterval(interval);
-  }, [loadPosts]);
+    const q = query(collection(db, "socialPosts"), orderBy("createdAt", "desc"));
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        const list: PostVM[] = snap.docs.map((docSnap) => {
+          const data = docSnap.data();
+          return {
+            id: docSnap.id,
+            name: String(data.authorName || "Anonymous"),
+            initials: String(data.authorInitials || "?"),
+            minutesAgo: timestampToMinutesAgo(data.createdAt),
+            text: String(data.text || ""),
+            image: data.image ? String(data.image) : null,
+            liked: false,
+            likes: Number(data.likes || 0),
+            comments: Number(data.comments || 0),
+          };
+        });
+        setPosts(list);
+      },
+      () => setMsg("Could not load social posts right now.")
+    );
+    return () => unsub();
+  }, []);
 
   const visible = filterPosts(posts, activeFilter);
 
@@ -146,23 +154,28 @@ export default function SocialPage(): JSX.Element {
       setTimeout(() => navigate(loginWithRedirect("/social")), 600);
       return;
     }
-    void createPost({
-      text: t,
-      image: pendingImage || null,
+    void addDoc(collection(db, "socialPosts"), {
+      uid: user.uid,
       authorName: getAuthorName(user),
       authorInitials: getInitials(user),
+      text: t,
+      image: pendingImage || null,
+      likes: 0,
+      comments: 0,
+      createdAt: serverTimestamp(),
     })
       .then(() => {
         setText("");
         setPendingImage(null);
         setMsg("Posted successfully.");
         setMsgOk(true);
-        void loadPosts();
+        toast("Post published!");
       })
       .catch((e) => {
-        const err = e as { response?: { data?: { error?: string } }; message?: string };
-        setMsg(err.response?.data?.error ?? err.message ?? "Could not post right now.");
+        const m = (e as Error).message || "Could not post right now.";
+        setMsg(m);
         setMsgOk(false);
+        toast(m, "error");
       });
   };
 
@@ -317,6 +330,11 @@ export default function SocialPage(): JSX.Element {
         </div>
       </main>
 
+      <footer className="footer">
+        <div className="footer-inner">
+          <span>Eventra · Community</span>
+        </div>
+      </footer>
     </AppLayout>
   );
 }

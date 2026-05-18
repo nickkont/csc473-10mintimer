@@ -1,20 +1,25 @@
+import {
+  collection,
+  doc,
+  getDocs,
+  orderBy,
+  query,
+  runTransaction,
+  serverTimestamp,
+} from "firebase/firestore";
 import React, { useCallback, useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import ActivityTicker from "../components/ActivityTicker";
+import { useNavigate } from "react-router-dom";
 import AppLayout from "../components/AppLayout";
-import Sparkline from "../components/Sparkline";
 import { useAuth } from "../context/AuthContext";
+import { db } from "../firebase";
 import { loginWithRedirect } from "../lib/siteUrls";
-import { placeBet, sellShares } from "../api/bets";
-import { claimPayout as apiClaimPayout, getPriceHistory, listMarkets, PriceTick } from "../api/markets";
-import { getMyPositions } from "../api/users";
 import "../../../styles.css";
-import "../../../events-extras.css";
 
 export interface Market {
   id: string;
   title: string;
   category: string;
+  imageUrl?: string;
   closesAt?: { seconds: number; toDate?: () => Date };
   status: string;
   outcome?: "yes" | "no";
@@ -23,12 +28,20 @@ export interface Market {
   totalTrades: number;
 }
 
+const CATEGORY_EMOJI: Record<string, string> = {
+  ccny: "🎓",
+  sports: "🏆",
+  politics: "🏛️",
+  economics: "📈",
+  culture: "🎭",
+  climate: "🌍",
+  other: "📊",
+};
+
 interface PositionRow {
   marketId: string;
   yesShares: number;
   noShares: number;
-  yesCost?: number;
-  noCost?: number;
   payoutClaimed?: boolean;
   claimedAmount?: number;
 }
@@ -50,16 +63,13 @@ export default function EventsPage(): JSX.Element {
   const [markets, setMarkets] = useState<Market[]>([]);
   const [positions, setPositions] = useState<Array<PositionRow & { title: string; market?: Market }>>([]);
   const [loading, setLoading] = useState(true);
-  const [catFilter, setCatFilter] = useState<"all" | "ccny" | "sports" | "politics">("all");
+  const [catFilter, setCatFilter] = useState<"all" | "ccny" | "sports" | "politics" | "economics" | "culture" | "climate">("all");
   const [userBalance, setUserBalance] = useState(0);
-  const [histories, setHistories] = useState<Record<string, PriceTick[]>>({});
 
   const [modalOpen, setModalOpen] = useState(false);
   const [pendingMarketId, setPendingMarketId] = useState("");
   const [pendingSide, setPendingSide] = useState<"yes" | "no">("yes");
   const [pendingPrice, setPendingPrice] = useState(0);
-  const [pendingAction, setPendingAction] = useState<"buy" | "sell">("buy");
-  const [pendingMaxShares, setPendingMaxShares] = useState(0);
   const [shares, setShares] = useState(1);
   const [modalMsg, setModalMsg] = useState("");
   const [modalMsgClass, setModalMsgClass] = useState("");
@@ -68,66 +78,39 @@ export default function EventsPage(): JSX.Element {
     setUserBalance(navBalance);
   }, [navBalance]);
 
-  const loadMarkets = useCallback(async (silent = false): Promise<void> => {
-    if (!silent) setLoading(true);
+  const loadMarkets = useCallback(async (): Promise<void> => {
+    setLoading(true);
     try {
-      const list = (await listMarkets()) as unknown as Market[];
+      const q = query(collection(db, "markets"), orderBy("createdAt", "desc"));
+      const snap = await getDocs(q);
+      const list: Market[] = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Market));
       setMarkets(list);
       if (user) {
-        const posList = await getMyPositions();
-        const rows: Array<PositionRow & { title: string; market?: Market }> = posList.map((pos) => {
+        const pSnap = await getDocs(collection(db, "users", user.uid, "positions"));
+        const rows: Array<PositionRow & { title: string; market?: Market }> = [];
+        pSnap.docs.forEach((docSnap) => {
+          const pos = docSnap.data() as PositionRow;
           const market = list.find((m) => m.id === pos.marketId);
-          return {
-            marketId: pos.marketId,
-            yesShares: pos.yesShares,
-            noShares: pos.noShares,
-            yesCost: pos.yesCost,
-            noCost: pos.noCost,
-            payoutClaimed: pos.payoutClaimed,
-            claimedAmount: pos.claimedAmount,
+          rows.push({
+            ...pos,
             title: market ? market.title : pos.marketId,
             market,
-          };
+          });
         });
         setPositions(rows);
       } else {
         setPositions([]);
       }
     } catch {
-      if (!silent) setMarkets([]);
+      setMarkets([]);
     } finally {
-      if (!silent) setLoading(false);
+      setLoading(false);
     }
   }, [user]);
-
-  const loadHistories = useCallback(async (marketIds: string[]): Promise<void> => {
-    const results = await Promise.allSettled(
-      marketIds.map((id) => getPriceHistory(id, 30).then((h) => [id, h] as const))
-    );
-    const next: Record<string, PriceTick[]> = {};
-    for (const r of results) {
-      if (r.status === "fulfilled") {
-        const [id, h] = r.value;
-        next[id] = h;
-      }
-    }
-    setHistories(next);
-  }, []);
 
   useEffect(() => {
     void loadMarkets();
   }, [loadMarkets]);
-
-  useEffect(() => {
-    if (markets.length === 0) return;
-    const ids = markets.map((m) => m.id);
-    void loadHistories(ids);
-    const interval = setInterval(() => {
-      void loadHistories(ids);
-      void loadMarkets(true);
-    }, 10000);
-    return () => clearInterval(interval);
-  }, [markets.length, loadHistories, loadMarkets]);
 
   const openTrade = (marketId: string, side: "yes" | "no"): void => {
     if (!user) {
@@ -140,31 +123,7 @@ export default function EventsPage(): JSX.Element {
     setPendingMarketId(marketId);
     setPendingSide(side);
     setPendingPrice(price);
-    setPendingAction("buy");
-    setPendingMaxShares(0);
     setShares(1);
-    setModalMsg("");
-    setModalOpen(true);
-  };
-
-  const [pendingCostBasis, setPendingCostBasis] = useState(0);
-  const [showClosed, setShowClosed] = useState(false);
-
-  const openSell = (marketId: string, side: "yes" | "no", maxShares: number, costBasis: number): void => {
-    if (!user) {
-      navigate(loginWithRedirect("/events"));
-      return;
-    }
-    const market = markets.find((m) => m.id === marketId);
-    if (!market || market.status === "resolved" || maxShares < 1) return;
-    const price = side === "yes" ? market.yesPrice : market.noPrice;
-    setPendingMarketId(marketId);
-    setPendingSide(side);
-    setPendingPrice(price);
-    setPendingAction("sell");
-    setPendingMaxShares(maxShares);
-    setPendingCostBasis(costBasis);
-    setShares(maxShares);
     setModalMsg("");
     setModalOpen(true);
   };
@@ -178,51 +137,135 @@ export default function EventsPage(): JSX.Element {
   const executeTrade = async (): Promise<void> => {
     if (!user || !pendingMarketId) return;
     const n = Math.max(1, shares);
+    const cost = parseFloat((pendingPrice * n).toFixed(2));
+    if (cost > userBalance) {
+      setModalMsg("Insufficient balance.");
+      setModalMsgClass("error");
+      return;
+    }
     setModalMsg("Processing…");
     setModalMsgClass("");
+    const uid = user.uid;
+    const userRef = doc(db, "users", uid);
+    const marketRef = doc(db, "markets", pendingMarketId);
+    const posRef = doc(db, "users", uid, "positions", pendingMarketId);
+    const side = pendingSide;
+    const marketId = pendingMarketId;
+
     try {
-      if (pendingAction === "sell") {
-        const { newBalance } = await sellShares({
-          marketId: pendingMarketId,
-          side: pendingSide,
-          shares: n,
+      const newBalance = await runTransaction(db, async (t) => {
+        const [userSnap, posSnap, marketSnap] = await Promise.all([
+          t.get(userRef),
+          t.get(posRef),
+          t.get(marketRef),
+        ]);
+        const bal = userSnap.exists() ? Number(userSnap.data()?.walletBalance) || 0 : 0;
+        if (cost > bal) throw new Error("Insufficient balance.");
+        const nb = parseFloat((bal - cost).toFixed(2));
+        const rawPos = posSnap.exists() ? posSnap.data() : undefined;
+        const posData = rawPos ?? { yesShares: 0, noShares: 0 };
+        const newYes = Number(posData.yesShares) || 0;
+        const newNo = Number(posData.noShares) || 0;
+        const ny = newYes + (side === "yes" ? n : 0);
+        const nn = newNo + (side === "no" ? n : 0);
+        const trades = marketSnap.exists() ? Number(marketSnap.data()?.totalTrades) || 0 : 0;
+
+        t.update(userRef, { walletBalance: nb });
+        t.set(
+          posRef,
+          {
+            marketId,
+            yesShares: ny,
+            noShares: nn,
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true }
+        );
+        const txRef = doc(collection(db, "users", uid, "transactions"));
+        t.set(txRef, {
+          type: "trade",
+          amount: -cost,
+          description:
+            "Bought " +
+            n +
+            " " +
+            side.toUpperCase() +
+            " on: " +
+            (marketSnap.exists() ? marketSnap.data()?.title : marketId),
+          balance: nb,
+          timestamp: serverTimestamp(),
         });
-        setUserBalance(newBalance);
-        setModalMsg("Sold!");
-      } else {
-        const { newBalance } = await placeBet({
-          marketId: pendingMarketId,
-          side: pendingSide,
-          shares: n,
-        });
-        setUserBalance(newBalance);
-        setModalMsg("Trade placed!");
-      }
+        t.update(marketRef, { totalTrades: trades + 1 });
+        return nb;
+      });
+      setUserBalance(newBalance);
+      setModalMsg("Trade placed!");
       setModalMsgClass("success");
-      await loadMarkets(true);
+      await loadMarkets();
       setTimeout(() => setModalOpen(false), 800);
     } catch (e) {
-      const err = e as { response?: { data?: { error?: string } }; message?: string };
-      const msg = err.response?.data?.error ?? err.message ?? "Trade failed.";
-      setModalMsg(msg);
+      const err = e as Error;
+      setModalMsg(err.message || "Trade failed.");
       setModalMsgClass("error");
     }
   };
 
   const claimPayout = async (marketId: string): Promise<void> => {
     if (!user) return;
+    const uid = user.uid;
+    const userRef = doc(db, "users", uid);
+    const posRef = doc(db, "users", uid, "positions", marketId);
+    const marketRef = doc(db, "markets", marketId);
+
     try {
-      const { newBalance } = await apiClaimPayout(marketId);
+      const newBalance = await runTransaction(db, async (t) => {
+        const [userSnap, posSnap, marketSnap] = await Promise.all([
+          t.get(userRef),
+          t.get(posRef),
+          t.get(marketRef),
+        ]);
+        if (!posSnap.exists()) throw new Error("Position not found.");
+        if (!marketSnap.exists()) throw new Error("Market not found.");
+        const mdata = marketSnap.data() as { status?: string; outcome?: string; title?: string };
+        if (mdata.status !== "resolved" || !mdata.outcome) throw new Error("Market is not resolved yet.");
+        const posData = posSnap.data() as Record<string, unknown>;
+        if (posData.payoutClaimed === true) throw new Error("Payout already claimed.");
+        const outcome = mdata.outcome as "yes" | "no";
+        const winShares =
+          outcome === "yes" ? Number(posData.yesShares) || 0 : Number(posData.noShares) || 0;
+        if (winShares <= 0) throw new Error("No winning shares to claim.");
+        const payout = parseFloat(winShares.toFixed(2));
+        const bal = userSnap.exists() ? Number(userSnap.data()?.walletBalance) || 0 : 0;
+        const nb = parseFloat((bal + payout).toFixed(2));
+        const title = mdata.title || marketId;
+        const posUpdate: Record<string, unknown> = {
+          payoutClaimed: true,
+          claimedAmount: payout,
+          claimedAt: serverTimestamp(),
+        };
+        if (outcome === "yes") posUpdate.yesShares = 0;
+        else posUpdate.noShares = 0;
+        t.update(userRef, { walletBalance: nb });
+        t.set(posRef, posUpdate, { merge: true });
+        const txRef = doc(collection(db, "users", uid, "transactions"));
+        t.set(txRef, {
+          type: "payout",
+          amount: payout,
+          description: "Payout from: " + title,
+          balance: nb,
+          timestamp: serverTimestamp(),
+        });
+        return nb;
+      });
       setUserBalance(newBalance);
       await loadMarkets();
     } catch (e) {
-      const err = e as { response?: { data?: { error?: string } }; message?: string };
-      alert(err.response?.data?.error ?? err.message ?? "Claim failed.");
+      alert((e as Error).message || "Claim failed.");
     }
   };
 
-  const categories = ["ccny", "sports", "politics"] as const;
-  const byCategory: Record<string, Market[]> = { ccny: [], sports: [], politics: [], other: [] };
+  const categories = ["ccny", "sports", "politics", "economics", "culture", "climate"] as const;
+  const byCategory: Record<string, Market[]> = { ccny: [], sports: [], politics: [], economics: [], culture: [], climate: [], other: [] };
   markets.forEach((m) => {
     const cat = categories.includes(m.category as "ccny") ? m.category : "other";
     byCategory[cat].push(m);
@@ -249,6 +292,15 @@ export default function EventsPage(): JSX.Element {
           <div className={"cat-tab" + (catFilter === "politics" ? " active" : "")} onClick={() => filterCat("politics")}>
             Politics
           </div>
+          <div className={"cat-tab" + (catFilter === "economics" ? " active" : "")} onClick={() => filterCat("economics")}>
+            Economics
+          </div>
+          <div className={"cat-tab" + (catFilter === "culture" ? " active" : "")} onClick={() => filterCat("culture")}>
+            Culture
+          </div>
+          <div className={"cat-tab" + (catFilter === "climate" ? " active" : "")} onClick={() => filterCat("climate")}>
+            Climate
+          </div>
         </div>
       </div>
 
@@ -267,160 +319,57 @@ export default function EventsPage(): JSX.Element {
           <div className={"sidebar-link" + (catFilter === "politics" ? " active" : "")} onClick={() => filterCat("politics")}>
             Politics
           </div>
+          <div className={"sidebar-link" + (catFilter === "economics" ? " active" : "")} onClick={() => filterCat("economics")}>
+            Economics
+          </div>
+          <div className={"sidebar-link" + (catFilter === "culture" ? " active" : "")} onClick={() => filterCat("culture")}>
+            Culture
+          </div>
+          <div className={"sidebar-link" + (catFilter === "climate" ? " active" : "")} onClick={() => filterCat("climate")}>
+            Climate
+          </div>
         </aside>
 
         <main className="feed">
-          {user && positions.length > 0 ? (() => {
-            const plClass = (pl: number): string => (pl > 0.005 ? "up" : pl < -0.005 ? "down" : "flat");
-            const plLabel = (pl: number): string => (pl >= 0 ? `+$${pl.toFixed(2)}` : `-$${Math.abs(pl).toFixed(2)}`);
-
-            const renderCard = (p: PositionRow & { title: string; market?: Market }): JSX.Element => {
-              const market = p.market;
-              const resolved = market ? market.status === "resolved" : false;
-              const outcome = market?.outcome ?? null;
-              let winShares = 0;
-              if (resolved && outcome) {
-                winShares = outcome === "yes" ? p.yesShares || 0 : p.noShares || 0;
-              }
-              const alreadyClaimed = p.payoutClaimed === true;
-              const yesPrice = market?.yesPrice ?? 0;
-              const noPrice = market?.noPrice ?? 0;
-              const yesValue = parseFloat((p.yesShares * yesPrice).toFixed(2));
-              const noValue = parseFloat((p.noShares * noPrice).toFixed(2));
-              const yesPaid = typeof p.yesCost === "number" ? p.yesCost : null;
-              const noPaid = typeof p.noCost === "number" ? p.noCost : null;
-              const yesPL = yesPaid !== null ? parseFloat((yesValue - yesPaid).toFixed(2)) : null;
-              const noPL = noPaid !== null ? parseFloat((noValue - noPaid).toFixed(2)) : null;
-              return (
-                    <div key={p.marketId} className="position-card" data-market-id={p.marketId}>
-                      <div className="position-card-head">
-                        <div className="position-card-title">{p.title}</div>
-                        <Link to={`/market/${p.marketId}`} className="position-card-view">View market →</Link>
+          {user && positions.length > 0 ? (
+            <div id="positions-section" className="feed-section">
+              <div className="feed-section-title">My Positions</div>
+              <div id="positions-list">
+                {positions.map((p) => {
+                  const market = p.market;
+                  const resolved = market ? market.status === "resolved" : false;
+                  const outcome = market?.outcome ?? null;
+                  let winShares = 0;
+                  if (resolved && outcome) {
+                    winShares = outcome === "yes" ? p.yesShares || 0 : p.noShares || 0;
+                  }
+                  const alreadyClaimed = p.payoutClaimed === true;
+                  return (
+                    <div key={p.marketId} className="position-row" data-market-id={p.marketId}>
+                      <div className="pos-title">{p.title}</div>
+                      <div className="pos-shares">
+                        {p.yesShares > 0 ? <span className="pos-yes">YES ×{p.yesShares}</span> : null}
+                        {p.noShares > 0 ? <span className="pos-no">NO ×{p.noShares}</span> : null}
                       </div>
-                      <div className="position-card-rows">
-                        {p.yesShares > 0 ? (
-                          <div className="position-side-block">
-                            <div className="position-side-row">
-                              <span className="position-side-label yes">YES</span>
-                              <span className="position-side-shares">×{p.yesShares}</span>
-                              <span className="position-side-price">@ ${yesPrice.toFixed(2)}</span>
-                              <span className="position-side-value">${yesValue.toFixed(2)}</span>
-                              {!resolved ? (
-                                <button
-                                  type="button"
-                                  className="position-side-sell"
-                                  onClick={() => openSell(p.marketId, "yes", p.yesShares, yesPaid ?? 0)}
-                                >
-                                  Sell
-                                </button>
-                              ) : null}
-                            </div>
-                            <div className="position-side-meta">
-                              <span>Paid: {yesPaid !== null ? `$${yesPaid.toFixed(2)}` : "—"}</span>
-                              {yesPL !== null ? (
-                                <span className={"position-side-pl " + plClass(yesPL)}>
-                                  P/L: {plLabel(yesPL)}
-                                </span>
-                              ) : (
-                                <span className="position-side-pl flat">P/L: —</span>
-                              )}
-                            </div>
-                          </div>
-                        ) : null}
-                        {p.noShares > 0 ? (
-                          <div className="position-side-block">
-                            <div className="position-side-row">
-                              <span className="position-side-label no">NO</span>
-                              <span className="position-side-shares">×{p.noShares}</span>
-                              <span className="position-side-price">@ ${noPrice.toFixed(2)}</span>
-                              <span className="position-side-value">${noValue.toFixed(2)}</span>
-                              {!resolved ? (
-                                <button
-                                  type="button"
-                                  className="position-side-sell"
-                                  onClick={() => openSell(p.marketId, "no", p.noShares, noPaid ?? 0)}
-                                >
-                                  Sell
-                                </button>
-                              ) : null}
-                            </div>
-                            <div className="position-side-meta">
-                              <span>Paid: {noPaid !== null ? `$${noPaid.toFixed(2)}` : "—"}</span>
-                              {noPL !== null ? (
-                                <span className={"position-side-pl " + plClass(noPL)}>
-                                  P/L: {plLabel(noPL)}
-                                </span>
-                              ) : (
-                                <span className="position-side-pl flat">P/L: —</span>
-                              )}
-                            </div>
-                          </div>
-                        ) : null}
-                      </div>
+                      {!resolved && p.market ? (
+                        <span className="pos-value">
+                          Est. ${((p.yesShares || 0) * p.market.yesPrice + (p.noShares || 0) * p.market.noPrice).toFixed(2)}
+                        </span>
+                      ) : null}
                       {resolved && outcome && alreadyClaimed && typeof p.claimedAmount === "number" ? (
-                        <div className="position-card-foot">
-                          <span className="claimed-label">Claimed ${p.claimedAmount.toFixed(2)}</span>
-                        </div>
+                        <span className="claimed-label">Claimed ${p.claimedAmount.toFixed(2)}</span>
                       ) : null}
                       {resolved && outcome && !alreadyClaimed && winShares > 0 ? (
-                        <div className="position-card-foot">
-                          <button type="button" className="claim-btn" onClick={() => void claimPayout(p.marketId)}>
-                            Claim ${winShares.toFixed(2)}
-                          </button>
-                        </div>
+                        <button type="button" className="claim-btn" onClick={() => void claimPayout(p.marketId)}>
+                          Claim ${winShares.toFixed(2)}
+                        </button>
                       ) : null}
                     </div>
                   );
-            };
-
-            const isClosed = (p: PositionRow & { title: string; market?: Market }): boolean => {
-              const market = p.market;
-              const resolved = market ? market.status === "resolved" : false;
-              const outcome = market?.outcome ?? null;
-              const alreadyClaimed = p.payoutClaimed === true;
-              let winShares = 0;
-              if (resolved && outcome) {
-                winShares = outcome === "yes" ? p.yesShares || 0 : p.noShares || 0;
-              }
-              if (resolved && (alreadyClaimed || winShares === 0)) return true;
-              if (p.yesShares === 0 && p.noShares === 0) return true;
-              return false;
-            };
-
-            const openPositions = positions.filter((p) => !isClosed(p));
-            const closedPositions = positions.filter(isClosed);
-
-            return (
-              <div id="positions-section" className="feed-section">
-                <div className="feed-section-title">My Positions</div>
-                <div id="positions-list">
-                  {openPositions.length === 0 ? (
-                    <p className="positions-empty">No active positions. Place a trade to get started.</p>
-                  ) : (
-                    openPositions.map(renderCard)
-                  )}
-                </div>
-                {closedPositions.length > 0 ? (
-                  <div className="closed-positions">
-                    <button
-                      type="button"
-                      className="closed-positions-toggle"
-                      onClick={() => setShowClosed((v) => !v)}
-                      aria-expanded={showClosed}
-                    >
-                      <span>{showClosed ? "Hide" : "Show"} closed positions</span>
-                      <span className="closed-positions-count">{closedPositions.length}</span>
-                    </button>
-                    {showClosed ? (
-                      <div className="closed-positions-list">
-                        {closedPositions.map(renderCard)}
-                      </div>
-                    ) : null}
-                  </div>
-                ) : null}
+                })}
               </div>
-            );
-          })() : null}
+            </div>
+          ) : null}
 
           <div id="markets-feed">
             {loading ? (
@@ -438,8 +387,13 @@ export default function EventsPage(): JSX.Element {
                     {ms.map((m) => {
                       const resolved = m.status === "resolved";
                       return (
-                        <div key={m.id} className="event-card" data-id={m.id}>
+                        <div key={m.id} className="event-card" data-id={m.id} onClick={() => navigate(`/events/${m.id}`)} style={{ cursor: "pointer" }}>
                           <div className="event-card-top">
+                            <div className="event-card-icon">
+                              {m.imageUrl
+                                ? <img src={m.imageUrl} alt="" />
+                                : <span>{CATEGORY_EMOJI[m.category] ?? "📊"}</span>}
+                            </div>
                             <span className={"event-tag " + m.category}>{capitalize(m.category)}</span>
                             {resolved ? (
                               <span className={"outcome-badge " + m.outcome}>
@@ -447,14 +401,7 @@ export default function EventsPage(): JSX.Element {
                               </span>
                             ) : null}
                           </div>
-                          <Link to={`/market/${m.id}`} className="event-question-link">
-                            <div className="event-question">{m.title}</div>
-                          </Link>
-                          {histories[m.id] && histories[m.id].length >= 2 ? (
-                            <div className="event-spark">
-                              <Sparkline history={histories[m.id]} side="both" height={40} />
-                            </div>
-                          ) : null}
+                          <div className="event-question">{m.title}</div>
                           <div className="event-bottom">
                             <span className="event-meta">
                               {m.totalTrades} trades · Closes {closesLabel(m)}
@@ -464,10 +411,10 @@ export default function EventsPage(): JSX.Element {
                                 <span className="resolved-label">Market closed</span>
                               ) : (
                                 <>
-                                  <button type="button" className="trade-btn yes-btn" onClick={() => openTrade(m.id, "yes")}>
+                                  <button type="button" className="trade-btn yes-btn" onClick={(e) => { e.stopPropagation(); openTrade(m.id, "yes"); }}>
                                     YES <span className="trade-price">${m.yesPrice.toFixed(2)}</span>
                                   </button>
-                                  <button type="button" className="trade-btn no-btn" onClick={() => openTrade(m.id, "no")}>
+                                  <button type="button" className="trade-btn no-btn" onClick={(e) => { e.stopPropagation(); openTrade(m.id, "no"); }}>
                                     NO <span className="trade-price">${m.noPrice.toFixed(2)}</span>
                                   </button>
                                 </>
@@ -483,10 +430,6 @@ export default function EventsPage(): JSX.Element {
             )}
           </div>
         </main>
-
-        <div className="events-activity-rail">
-          <ActivityTicker />
-        </div>
       </div>
 
       <div
@@ -520,41 +463,20 @@ export default function EventsPage(): JSX.Element {
             Balance: <strong id="modal-user-balance">${userBalance.toFixed(2)}</strong>
           </div>
           <div className="trade-modal-field">
-            <label htmlFor="modal-shares">
-              Shares{pendingAction === "sell" ? ` (max ${pendingMaxShares})` : ""}
-            </label>
+            <label htmlFor="modal-shares">Shares</label>
             <input
               type="number"
               id="modal-shares"
               min={1}
-              max={pendingAction === "sell" ? pendingMaxShares : undefined}
               value={shares}
-              onChange={(e) => {
-                const v = Math.max(1, parseInt(e.target.value, 10) || 1);
-                const cap = pendingAction === "sell" ? Math.min(v, pendingMaxShares) : v;
-                setShares(cap);
-              }}
+              onChange={(e) => setShares(Math.max(1, parseInt(e.target.value, 10) || 1))}
             />
           </div>
           <div className="trade-modal-cost">
-            {pendingAction === "sell" ? "You'll receive: " : "Total cost: "}
-            <strong id="modal-cost">${totalCost.toFixed(2)}</strong>
+            Total cost: <strong id="modal-cost">${totalCost.toFixed(2)}</strong>
           </div>
-          {pendingAction === "sell" && pendingMaxShares > 0 ? (() => {
-            const sellN = Math.min(Math.max(1, shares), pendingMaxShares);
-            const costPortion = pendingCostBasis * (sellN / pendingMaxShares);
-            const projectedPL = parseFloat((totalCost - costPortion).toFixed(2));
-            const cls = projectedPL > 0.005 ? "up" : projectedPL < -0.005 ? "down" : "flat";
-            const label = projectedPL >= 0 ? `+$${projectedPL.toFixed(2)}` : `-$${Math.abs(projectedPL).toFixed(2)}`;
-            return (
-              <div className={"trade-modal-pl " + cls}>
-                <span>Cost basis (this sale): ${costPortion.toFixed(2)}</span>
-                <span>Projected P/L: <strong>{label}</strong></span>
-              </div>
-            );
-          })() : null}
           <button type="button" className="trade-modal-buy-btn" id="modal-buy-btn" onClick={() => void executeTrade()}>
-            {pendingAction === "sell" ? "Sell" : "Buy"}
+            Buy
           </button>
           <div className={"modal-msg" + (modalMsgClass ? " " + modalMsgClass : "")} id="modal-msg">
             {modalMsg}
@@ -562,6 +484,11 @@ export default function EventsPage(): JSX.Element {
         </div>
       </div>
 
+      <footer className="footer">
+        <div className="container footer-inner">
+          <span>Eventra · Prediction Markets</span>
+        </div>
+      </footer>
     </AppLayout>
   );
 }

@@ -1,7 +1,7 @@
 import { signInWithEmailAndPassword } from "firebase/auth";
 import React, { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import AppLayout from "../components/AppLayout";
+import SiteHeader from "../components/SiteHeader";
 import { useAuth } from "../context/AuthContext";
 import { auth } from "../firebase";
 import "../../../styles.css";
@@ -38,7 +38,10 @@ export default function LoginPage(): JSX.Element {
   };
 
   return (
-    <AppLayout>
+    <>
+      <div className="bg-glow bg-glow-1" aria-hidden="true" />
+      <div className="bg-glow bg-glow-2" aria-hidden="true" />
+      <SiteHeader />
       <main
         className="auth-main"
         style={{ minHeight: "calc(100vh - 64px)", display: "flex", alignItems: "center", justifyContent: "center", padding: "2rem 1rem" }}
@@ -81,6 +84,6 @@ export default function LoginPage(): JSX.Element {
           </p>
         </div>
       </main>
-    </AppLayout>
+    </>
   );
 }

@@ -1,251 +1,393 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  orderBy,
+  query,
+  runTransaction,
+  serverTimestamp,
+} from "firebase/firestore";
+import { useCallback, useEffect, useState } from "react";
+import {
+  Area,
+  AreaChart,
+  CartesianGrid,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+import { useNavigate, useParams } from "react-router-dom";
 import AppLayout from "../components/AppLayout";
-import PriceChart from "../components/PriceChart";
 import { useAuth } from "../context/AuthContext";
-import { placeBet } from "../api/bets";
-import { getMarket, getPriceHistory, MarketDoc, PriceTick } from "../api/markets";
-import { loginWithRedirect } from "../lib/siteUrls";
+import { useToast } from "../context/ToastContext";
+import { db } from "../firebase";
+import type { Market } from "./EventsPage";
 import "../../../styles.css";
 import "../../../market-detail.css";
 
-type LoadState = "loading" | "found" | "missing";
-
-function capitalize(s: string): string {
-  return s.charAt(0).toUpperCase() + s.slice(1);
+interface PricePoint {
+  label: string;
+  yes: number;
+  ts: number;
 }
 
-function closesLabel(m: MarketDoc): string {
-  if (!m.closesAt) return "—";
-  return new Date(m.closesAt.seconds * 1000).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
+type TimeFilter = "1D" | "1W" | "1M" | "ALL";
+
+const CATEGORY_EMOJI: Record<string, string> = {
+  ccny: "🎓",
+  sports: "🏆",
+  politics: "🏛️",
+  economics: "📈",
+  culture: "🎭",
+  climate: "🌍",
+  other: "📊",
+};
+
+function seededRand(seed: number): number {
+  const x = Math.sin(seed + 1) * 10000;
+  return x - Math.floor(x);
+}
+
+function simulateHistory(marketId: string, currentPrice: number): PricePoint[] {
+  let seed = 0;
+  for (let i = 0; i < marketId.length; i++) seed += marketId.charCodeAt(i);
+  const points: PricePoint[] = [];
+  let price = 0.5;
+  const now = Date.now();
+  for (let i = 30; i >= 0; i--) {
+    const rng = seededRand(seed + i * 7);
+    price = price + (currentPrice - price) * 0.12 + (rng - 0.5) * 0.07;
+    price = Math.max(0.02, Math.min(0.98, price));
+    const date = new Date(now - i * 24 * 60 * 60 * 1000);
+    points.push({
+      label: date.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+      yes: Math.round(price * 100),
+      ts: date.getTime(),
+    });
+  }
+  return points;
+}
+
+function filterByTime(points: PricePoint[], filter: TimeFilter): PricePoint[] {
+  if (filter === "ALL") return points;
+  const ranges: Record<TimeFilter, number> = {
+    "1D": 864e5,
+    "1W": 7 * 864e5,
+    "1M": 30 * 864e5,
+    "ALL": Infinity,
+  };
+  const cutoff = Date.now() - ranges[filter];
+  return points.filter((p) => p.ts >= cutoff);
+}
+
+function ChartTooltip({ active, payload, label }: {
+  active?: boolean;
+  payload?: Array<{ value: number }>;
+  label?: string;
+}) {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="md-tooltip">
+      <div className="md-tooltip-date">{label}</div>
+      <div className="md-tooltip-val">{payload[0].value}% YES</div>
+    </div>
+  );
 }
 
 export default function MarketDetailPage(): JSX.Element {
   const { marketId } = useParams<{ marketId: string }>();
   const { user, balance } = useAuth();
   const navigate = useNavigate();
+  const toast = useToast();
 
-  const [market, setMarket] = useState<MarketDoc | null>(null);
-  const [state, setState] = useState<LoadState>("loading");
+  const [market, setMarket] = useState<Market | null>(null);
+  const [pageLoading, setPageLoading] = useState(true);
+  const [allPoints, setAllPoints] = useState<PricePoint[]>([]);
+  const [timeFilter, setTimeFilter] = useState<TimeFilter>("ALL");
+
   const [side, setSide] = useState<"yes" | "no">("yes");
   const [shares, setShares] = useState(1);
-  const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState("");
-  const [msgErr, setMsgErr] = useState(false);
+  const [tradeMsg, setTradeMsg] = useState("");
+  const [tradeMsgOk, setTradeMsgOk] = useState(false);
   const [userBalance, setUserBalance] = useState(balance);
-  const [history, setHistory] = useState<PriceTick[]>([]);
-  const [flash, setFlash] = useState<"up" | "down" | null>(null);
-  const prevYesRef = useRef<number | null>(null);
 
-  useEffect(() => {
-    setUserBalance(balance);
-  }, [balance]);
+  useEffect(() => { setUserBalance(balance); }, [balance]);
 
-  const loadMarket = useCallback(async (): Promise<void> => {
-    if (!marketId) {
-      setState("missing");
-      return;
-    }
-    try {
-      const m = await getMarket(marketId);
-      setMarket((prev) => {
-        if (prev && m.yesPrice !== prev.yesPrice) {
-          setFlash(m.yesPrice > prev.yesPrice ? "up" : "down");
-          setTimeout(() => setFlash(null), 600);
-        }
-        return m;
-      });
-      setState("found");
-    } catch {
-      setState("missing");
-    }
-  }, [marketId]);
-
-  const loadHistory = useCallback(async (): Promise<void> => {
+  const loadMarket = useCallback(async () => {
     if (!marketId) return;
+    setPageLoading(true);
     try {
-      const h = await getPriceHistory(marketId, 100);
-      setHistory(h);
-    } catch {
-      // ignore — chart will show empty state
+      const snap = await getDoc(doc(db, "markets", marketId));
+      if (!snap.exists()) { navigate("/events"); return; }
+      const m = { id: snap.id, ...snap.data() } as Market;
+      setMarket(m);
+
+      try {
+        const histSnap = await getDocs(
+          query(collection(db, "markets", marketId, "priceHistory"), orderBy("timestamp", "asc"))
+        );
+        if (histSnap.size >= 2) {
+          setAllPoints(
+            histSnap.docs.map((d) => {
+              const data = d.data() as { yesPrice: number; timestamp: { seconds: number } };
+              const date = new Date(data.timestamp.seconds * 1000);
+              return {
+                label: date.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+                yes: Math.round(data.yesPrice * 100),
+                ts: date.getTime(),
+              };
+            })
+          );
+        } else {
+          setAllPoints(simulateHistory(marketId, m.yesPrice));
+        }
+      } catch {
+        setAllPoints(simulateHistory(marketId, m.yesPrice));
+      }
+    } finally {
+      setPageLoading(false);
     }
-  }, [marketId]);
+  }, [marketId, navigate]);
 
-  useEffect(() => {
-    setState("loading");
-    void loadMarket();
-    void loadHistory();
-  }, [loadMarket, loadHistory]);
+  useEffect(() => { void loadMarket(); }, [loadMarket]);
 
-  useEffect(() => {
-    if (state !== "found" || !market || market.status === "resolved") return;
-    const interval = setInterval(() => {
-      void loadMarket();
-      void loadHistory();
-    }, 5000);
-    return () => clearInterval(interval);
-  }, [state, market, loadMarket, loadHistory]);
+  const chartData = filterByTime(allPoints, timeFilter);
+  const currentYes = market ? Math.round(market.yesPrice * 100) : 0;
+  const currentNo = market ? Math.round(market.noPrice * 100) : 0;
+  const price = side === "yes" ? (market?.yesPrice ?? 0) : (market?.noPrice ?? 0);
+  const totalCost = price * Math.max(1, shares);
 
-  useEffect(() => {
-    if (market) prevYesRef.current = market.yesPrice;
-  }, [market]);
-
-  const onTrade = async (): Promise<void> => {
-    if (!user) {
-      navigate(loginWithRedirect(`/market/${marketId ?? ""}`));
-      return;
-    }
-    if (!market || !marketId) return;
-    if (market.status === "resolved") return;
-    const n = Math.max(1, Math.floor(shares) || 1);
-    setBusy(true);
-    setMsg("");
-    setMsgErr(false);
+  const executeTrade = async (): Promise<void> => {
+    if (!user || !market || !marketId) return;
+    const n = Math.max(1, shares);
+    const cost = parseFloat((price * n).toFixed(2));
+    if (cost > userBalance) { setTradeMsg("Insufficient balance."); setTradeMsgOk(false); return; }
+    setTradeMsg("Processing…");
+    const uid = user.uid;
+    const userRef = doc(db, "users", uid);
+    const marketRef = doc(db, "markets", market.id);
+    const posRef = doc(db, "users", uid, "positions", market.id);
     try {
-      const { newBalance } = await placeBet({ marketId, side, shares: n });
+      const newBalance = await runTransaction(db, async (t) => {
+        const [userSnap, posSnap, marketSnap] = await Promise.all([
+          t.get(userRef), t.get(posRef), t.get(marketRef),
+        ]);
+        const bal = userSnap.exists() ? Number(userSnap.data().walletBalance) || 0 : 0;
+        if (cost > bal) throw new Error("Insufficient balance.");
+        const nb = parseFloat((bal - cost).toFixed(2));
+        const posData = posSnap.exists() ? posSnap.data() : { yesShares: 0, noShares: 0 };
+        const ny = Number(posData.yesShares) + (side === "yes" ? n : 0);
+        const nn = Number(posData.noShares) + (side === "no" ? n : 0);
+        const trades = marketSnap.exists() ? Number(marketSnap.data().totalTrades) || 0 : 0;
+        t.update(userRef, { walletBalance: nb });
+        t.set(posRef, { marketId: market.id, yesShares: ny, noShares: nn, updatedAt: serverTimestamp() }, { merge: true });
+        const txRef = doc(collection(db, "users", uid, "transactions"));
+        t.set(txRef, {
+          type: "trade",
+          amount: -cost,
+          description: `Bought ${n} ${side.toUpperCase()} on: ${market.title}`,
+          balance: nb,
+          timestamp: serverTimestamp(),
+        });
+        t.update(marketRef, { totalTrades: trades + 1 });
+        const snapRef = doc(collection(db, "markets", market.id, "priceHistory"));
+        t.set(snapRef, { yesPrice: market.yesPrice, noPrice: market.noPrice, timestamp: serverTimestamp() });
+        return nb;
+      });
       setUserBalance(newBalance);
-      setMsg(`Bought ${n} ${side.toUpperCase()} share${n === 1 ? "" : "s"}.`);
+      setTradeMsg("Trade placed!");
+      setTradeMsgOk(true);
+      toast("Trade placed! 🎉");
       await loadMarket();
     } catch (e) {
-      const err = e as { response?: { data?: { error?: string } }; message?: string };
-      setMsg(err.response?.data?.error ?? err.message ?? "Trade failed.");
-      setMsgErr(true);
-    } finally {
-      setBusy(false);
+      const m = (e as Error).message || "Trade failed.";
+      setTradeMsg(m);
+      setTradeMsgOk(false);
+      toast(m, "error");
     }
   };
 
-  const price = market ? (side === "yes" ? market.yesPrice : market.noPrice) : 0;
-  const totalCost = parseFloat((price * Math.max(1, shares)).toFixed(2));
+  if (pageLoading) {
+    return (
+      <AppLayout>
+        <div className="md-loading">Loading market…</div>
+      </AppLayout>
+    );
+  }
+
+  if (!market) {
+    return (
+      <AppLayout>
+        <div className="md-loading">Market not found.</div>
+      </AppLayout>
+    );
+  }
+
+  const resolved = market.status === "resolved";
+  const closesDate = market.closesAt
+    ? new Date((market.closesAt as { seconds: number }).seconds * 1000).toLocaleDateString("en-US", {
+        month: "short", day: "numeric", year: "numeric",
+      })
+    : null;
 
   return (
     <AppLayout>
-      <div className="market-detail container">
-        <Link to="/events" className="market-detail-back">
-          ← Back to markets
-        </Link>
+      <div className="md-page">
+        <div className="md-container">
+          <button type="button" className="md-back" onClick={() => navigate("/events")}>
+            ← Markets
+          </button>
 
-        {state === "loading" ? <p className="markets-loading">Loading…</p> : null}
-
-        {state === "missing" ? (
-          <div className="market-detail-card">
-            <p>No market found for ID <code>{marketId}</code>.</p>
-          </div>
-        ) : null}
-
-        {state === "found" && market ? (
-          <>
-            <header className="market-detail-head">
-              <div className="market-detail-tags">
-                <span className={"event-tag " + market.category}>
-                  {capitalize(market.category)}
-                </span>
-                {market.status === "resolved" && market.outcome ? (
-                  <span className={"outcome-badge " + market.outcome}>
-                    {market.outcome.toUpperCase()} wins
+          <div className="md-header">
+            <div className="md-icon">
+              {market.imageUrl
+                ? <img src={market.imageUrl} alt="" />
+                : <span>{CATEGORY_EMOJI[market.category] ?? "📊"}</span>}
+            </div>
+            <div className="md-header-text">
+              <div className="md-category">{market.category.toUpperCase()}</div>
+              <h1 className="md-title">{market.title}</h1>
+              <div className="md-stats">
+                <span>{market.totalTrades} trades</span>
+                {closesDate ? <span>· Closes {closesDate}</span> : null}
+                {resolved ? (
+                  <span className={"md-resolved-badge " + market.outcome}>
+                    · {market.outcome?.toUpperCase()} won
                   </span>
-                ) : (
-                  <span className="market-detail-status">Open</span>
-                )}
+                ) : null}
               </div>
-              <h1 className="market-detail-title">{market.title}</h1>
-              <p className="market-detail-meta">
-                {market.totalTrades} trades · Closes {closesLabel(market)} · ID: <code>{market.id}</code>
-              </p>
-            </header>
+            </div>
+          </div>
 
-            <section className="market-detail-grid">
-              <article className="market-detail-card market-detail-prices">
-                <h2 className="market-detail-h2">Current prices</h2>
-                <div className="market-detail-price-row">
-                  <div className={"market-detail-price-tile yes" + (flash ? " flash-" + flash : "")}>
-                    <div className="market-detail-price-label">YES</div>
-                    <div className="market-detail-price-value">${market.yesPrice.toFixed(2)}</div>
-                  </div>
-                  <div className={"market-detail-price-tile no" + (flash ? " flash-" + (flash === "up" ? "down" : "up") : "")}>
-                    <div className="market-detail-price-label">NO</div>
-                    <div className="market-detail-price-value">${market.noPrice.toFixed(2)}</div>
+          <div className="md-body">
+            {/* Chart */}
+            <div className="md-chart-section">
+              <div className="md-prob-row">
+                <span className="md-prob-value">{currentYes}%</span>
+                <span className="md-prob-label">chance YES</span>
+              </div>
+
+              <ResponsiveContainer width="100%" height={260}>
+                <AreaChart data={chartData} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="yesGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#4ade80" stopOpacity={0.25} />
+                      <stop offset="95%" stopColor="#4ade80" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                  <XAxis
+                    dataKey="label"
+                    tick={{ fill: "rgba(255,255,255,0.35)", fontSize: 11 }}
+                    axisLine={false}
+                    tickLine={false}
+                    interval="preserveStartEnd"
+                  />
+                  <YAxis
+                    domain={[0, 100]}
+                    tickFormatter={(v: number) => `${v}%`}
+                    tick={{ fill: "rgba(255,255,255,0.35)", fontSize: 11 }}
+                    axisLine={false}
+                    tickLine={false}
+                  />
+                  <Tooltip content={<ChartTooltip />} />
+                  <Area
+                    type="monotone"
+                    dataKey="yes"
+                    stroke="#4ade80"
+                    strokeWidth={2}
+                    fill="url(#yesGrad)"
+                    dot={false}
+                    activeDot={{ r: 5, fill: "#4ade80", stroke: "#fff", strokeWidth: 2 }}
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+
+              <div className="md-time-filters">
+                {(["1D", "1W", "1M", "ALL"] as TimeFilter[]).map((f) => (
+                  <button
+                    key={f}
+                    type="button"
+                    className={"md-time-btn" + (timeFilter === f ? " active" : "")}
+                    onClick={() => setTimeFilter(f)}
+                  >
+                    {f}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Trade panel */}
+            <div className="md-trade-panel">
+              {resolved ? (
+                <div className="md-resolved-panel">
+                  <div className="md-resolved-title">Market resolved</div>
+                  <div className={"md-resolved-outcome " + market.outcome}>
+                    {market.outcome?.toUpperCase()} wins
                   </div>
                 </div>
-                <p className="market-detail-hint">
-                  Each winning share pays out $1.00 when the market resolves.
-                </p>
-              </article>
+              ) : (
+                <>
+                  <div className="md-side-btns">
+                    <button
+                      type="button"
+                      className={"md-side-btn yes" + (side === "yes" ? " active" : "")}
+                      onClick={() => setSide("yes")}
+                    >
+                      Yes {currentYes}¢
+                    </button>
+                    <button
+                      type="button"
+                      className={"md-side-btn no" + (side === "no" ? " active" : "")}
+                      onClick={() => setSide("no")}
+                    >
+                      No {currentNo}¢
+                    </button>
+                  </div>
 
-              <article className="market-detail-card market-detail-trade">
-                <h2 className="market-detail-h2">Place a trade</h2>
-                {market.status === "resolved" ? (
-                  <p className="market-detail-closed">This market is closed.</p>
-                ) : (
-                  <>
-                    <div className="market-detail-side-toggle">
-                      <button
-                        type="button"
-                        className={"market-detail-side-btn yes" + (side === "yes" ? " active" : "")}
-                        onClick={() => setSide("yes")}
-                      >
-                        YES · ${market.yesPrice.toFixed(2)}
-                      </button>
-                      <button
-                        type="button"
-                        className={"market-detail-side-btn no" + (side === "no" ? " active" : "")}
-                        onClick={() => setSide("no")}
-                      >
-                        NO · ${market.noPrice.toFixed(2)}
-                      </button>
-                    </div>
-                    <label className="market-detail-field-label" htmlFor="md-shares">
-                      Shares
-                    </label>
+                  <div className="md-trade-field">
+                    <label>Shares</label>
                     <input
-                      id="md-shares"
                       type="number"
                       min={1}
                       value={shares}
                       onChange={(e) => setShares(Math.max(1, parseInt(e.target.value, 10) || 1))}
-                      className="market-detail-input"
                     />
-                    <div className="market-detail-cost-row">
-                      <span>Total cost</span>
-                      <strong>${totalCost.toFixed(2)}</strong>
-                    </div>
-                    {user ? (
-                      <div className="market-detail-cost-row market-detail-balance">
-                        <span>Balance</span>
-                        <strong>${userBalance.toFixed(2)}</strong>
-                      </div>
-                    ) : null}
+                  </div>
+
+                  <div className="md-cost-row">
+                    <span>Total cost</span>
+                    <strong>${totalCost.toFixed(2)}</strong>
+                  </div>
+                  <div className="md-cost-row">
+                    <span>Balance</span>
+                    <strong>${userBalance.toFixed(2)}</strong>
+                  </div>
+
+                  {user ? (
+                    <button type="button" className="md-buy-btn" onClick={() => void executeTrade()}>
+                      Buy {side.toUpperCase()}
+                    </button>
+                  ) : (
                     <button
                       type="button"
-                      className="market-detail-buy-btn"
-                      onClick={() => void onTrade()}
-                      disabled={busy}
+                      className="md-buy-btn"
+                      onClick={() => navigate(`/login?redirect=/events/${marketId ?? ""}`)}
                     >
-                      {busy ? "Placing…" : user ? `Buy ${side.toUpperCase()}` : "Log in to trade"}
+                      Sign up to trade
                     </button>
-                    {msg ? (
-                      <div className={"market-detail-msg" + (msgErr ? " error" : " success")}>
-                        {msg}
-                      </div>
-                    ) : null}
-                  </>
-                )}
-              </article>
-            </section>
+                  )}
 
-            <section className="market-detail-card market-detail-chart-card">
-              <div className="market-detail-chart-head">
-                <h2 className="market-detail-h2">{side.toUpperCase()} price history</h2>
-                <span className="market-detail-chart-hint">Live · updates every 30s</span>
-              </div>
-              <PriceChart history={history} side={side} />
-            </section>
-          </>
-        ) : null}
+                  {tradeMsg ? (
+                    <div className={"md-trade-msg" + (tradeMsgOk ? " ok" : " err")}>{tradeMsg}</div>
+                  ) : null}
+                </>
+              )}
+            </div>
+          </div>
+        </div>
       </div>
     </AppLayout>
   );

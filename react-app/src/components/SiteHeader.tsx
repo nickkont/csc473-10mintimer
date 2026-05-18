@@ -27,6 +27,7 @@ export default function SiteHeader(): JSX.Element {
           <Link className={"btn btn-ghost" + (at("/events") ? " active" : "")} to="/events">Markets</Link>
           <Link className={"btn btn-ghost" + (at("/wallet") ? " active" : "")} to="/wallet">Wallet</Link>
           <Link className={"btn btn-ghost" + (at("/social") ? " active" : "")} to="/social">Social</Link>
+          <Link className={"btn btn-ghost" + (at("/leaderboard") ? " active" : "")} to="/leaderboard">Leaderboard</Link>
           {role === "admin" ? (
             <Link className={"btn btn-ghost" + (at("/admin") ? " active" : "")} to="/admin">Admin</Link>
           ) : null}
