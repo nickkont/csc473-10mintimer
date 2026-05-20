@@ -1,10 +1,10 @@
-import { createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
-import { doc, serverTimestamp, setDoc } from "firebase/firestore";
+import { createUserWithEmailAndPassword, signOut, updateProfile } from "firebase/auth";
 import React, { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import SiteHeader from "../components/SiteHeader";
+import { createMe } from "../api/users";
 import { useAuth } from "../context/AuthContext";
-import { auth, db } from "../firebase";
+import { auth } from "../firebase";
 import "../../../styles.css";
 import "../../../auth.css";
 
@@ -16,6 +16,7 @@ export default function SignupPage(): JSX.Element {
   const [password, setPassword] = useState("");
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
+  const [pendingApproval, setPendingApproval] = useState(false);
 
   useEffect(() => {
     if (!loading && user) navigate("/events", { replace: true });
@@ -30,14 +31,11 @@ export default function SignupPage(): JSX.Element {
       const cred = await createUserWithEmailAndPassword(auth, email, password);
       const name = displayName.trim() || email.split("@")[0];
       await updateProfile(cred.user, { displayName: name });
-      await setDoc(doc(db, "users", cred.user.uid), {
-        email,
-        displayName: name,
-        walletBalance: 0,
-        role: "user",
-        createdAt: serverTimestamp(),
-      });
-      navigate("/events", { replace: true });
+      await createMe({ email, displayName: name });
+      // New users start pending. Sign them out so AuthContext doesn't redirect
+      // them into the app while we show the pending-approval message.
+      await signOut(auth);
+      setPendingApproval(true);
     } catch (err) {
       setMsg((err as Error).message || "Sign up failed.");
     } finally {
@@ -55,6 +53,19 @@ export default function SignupPage(): JSX.Element {
         style={{ minHeight: "calc(100vh - 64px)", display: "flex", alignItems: "center", justifyContent: "center", padding: "2rem 1rem" }}
       >
         <div className="auth-card">
+          {pendingApproval ? (
+            <>
+              <h1>Account pending approval</h1>
+              <p className="sub">
+                Thanks for signing up. An admin needs to approve your account before you can log in.
+                You'll be able to sign in once that's done.
+              </p>
+              <p className="auth-footer" style={{ marginTop: 24 }}>
+                <Link to="/login">Back to log in</Link>
+              </p>
+            </>
+          ) : (
+          <>
           <h1>Create account</h1>
           <p className="sub">Sign up to trade contracts and manage your account.</p>
           <form className="auth-form" onSubmit={(e) => void submit(e)} noValidate>
@@ -102,6 +113,8 @@ export default function SignupPage(): JSX.Element {
           <p className="auth-footer">
             Already have an account? <Link to="/login">Log in</Link>
           </p>
+          </>
+          )}
         </div>
       </main>
     </>

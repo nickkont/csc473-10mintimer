@@ -1,13 +1,12 @@
 import {
   collection,
   doc,
-  getDoc,
-  getDocs,
+  onSnapshot,
   orderBy,
   query,
 } from "firebase/firestore";
 import { db } from "../firebase";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Area,
   AreaChart,
@@ -129,44 +128,56 @@ export default function MarketDetailPage(): JSX.Element {
 
   useEffect(() => { setUserBalance(balance); }, [balance]);
 
-  const loadMarket = useCallback(async () => {
+  // Live subscription to the market doc — prices, totalTrades, and resolution
+  // status update without a refresh.
+  useEffect(() => {
     if (!marketId) return;
     setPageLoading(true);
-    try {
-      const snap = await getDoc(doc(db, "markets", marketId));
-      if (!snap.exists()) { navigate("/events"); return; }
-      const m = { id: snap.id, ...snap.data() } as Market;
-      setMarket(m);
+    const unsub = onSnapshot(
+      doc(db, "markets", marketId),
+      (snap) => {
+        if (!snap.exists()) { navigate("/events"); return; }
+        setMarket({ id: snap.id, ...snap.data() } as Market);
+        setPageLoading(false);
+      },
+      () => setPageLoading(false)
+    );
+    return () => unsub();
+  }, [marketId, navigate]);
 
-      try {
-        const histSnap = await getDocs(
-          query(collection(db, "markets", marketId, "priceHistory"), orderBy("timestamp", "asc"))
-        );
+  // Live subscription to priceHistory so the chart extends as trades arrive.
+  useEffect(() => {
+    if (!marketId) return;
+    const unsub = onSnapshot(
+      query(collection(db, "markets", marketId, "priceHistory"), orderBy("timestamp", "asc")),
+      (histSnap) => {
         if (histSnap.size >= 2) {
           setAllPoints(
             histSnap.docs.map((d) => {
               const data = d.data() as { yesPrice: number; noPrice: number; timestamp: { seconds: number } };
               const ts = data.timestamp.seconds * 1000;
               return {
-                label: "", // will be computed by labeledPoints()
+                label: "",
                 yes: Math.round(data.yesPrice * 100),
                 no: Math.round((data.noPrice ?? (1 - data.yesPrice)) * 100),
                 ts,
               };
             })
           );
-        } else {
-          setAllPoints(simulateHistory(marketId, m.yesPrice));
+        } else if (market) {
+          setAllPoints(simulateHistory(marketId, market.yesPrice));
         }
-      } catch {
-        setAllPoints(simulateHistory(marketId, m.yesPrice));
+      },
+      () => {
+        if (market) setAllPoints(simulateHistory(marketId, market.yesPrice));
       }
-    } finally {
-      setPageLoading(false);
-    }
-  }, [marketId, navigate]);
-
-  useEffect(() => { void loadMarket(); }, [loadMarket]);
+    );
+    return () => unsub();
+    // We intentionally don't re-subscribe on every `market` change — the
+    // subscription is keyed only to marketId. The `market` reference is used
+    // as a fallback for the simulated history when there are <2 points.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [marketId]);
 
   const chartData = labeledPoints(filterByTime(allPoints, timeFilter));
   const currentYes = market ? Math.round(market.yesPrice * 100) : 0;
@@ -186,7 +197,6 @@ export default function MarketDetailPage(): JSX.Element {
       setTradeMsg("Trade placed!");
       setTradeMsgOk(true);
       toast("Trade placed! 🎉");
-      await loadMarket();
     } catch (e) {
       const msg = (e as Error).message || "Trade failed.";
       setTradeMsg(msg);

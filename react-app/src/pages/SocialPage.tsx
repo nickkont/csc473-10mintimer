@@ -1,19 +1,15 @@
 import { onAuthStateChanged } from "firebase/auth";
 import {
-  addDoc,
   collection,
-  doc,
-  increment,
   onSnapshot,
   orderBy,
   query,
-  serverTimestamp,
-  updateDoc,
 } from "firebase/firestore";
 import type { User } from "firebase/auth";
 import React, { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import AppLayout from "../components/AppLayout";
+import { createComment, createPost } from "../api/posts";
 import { useToast } from "../context/ToastContext";
 import { auth, db } from "../firebase";
 import { loginWithRedirect } from "../lib/siteUrls";
@@ -124,14 +120,11 @@ function CommentsPanel({
     setSubmitting(true);
     setCommentText("");
     try {
-      await addDoc(collection(db, "socialPosts", postId, "comments"), {
-        uid: user.uid,
+      await createComment(postId, {
+        text: t,
         authorName: getAuthorName(user),
         authorInitials: getInitials(user),
-        text: t,
-        createdAt: serverTimestamp(),
       });
-      await updateDoc(doc(db, "socialPosts", postId), { comments: increment(1) });
       onCountChange(postId, 1);
     } finally {
       setSubmitting(false);
@@ -273,15 +266,11 @@ export default function SocialPage(): JSX.Element {
       setTimeout(() => navigate(loginWithRedirect("/social")), 600);
       return;
     }
-    void addDoc(collection(db, "socialPosts"), {
-      uid: user.uid,
-      authorName: getAuthorName(user),
-      authorInitials: getInitials(user),
+    void createPost({
       text: t,
       image: pendingImage || null,
-      likes: 0,
-      comments: 0,
-      createdAt: serverTimestamp(),
+      authorName: getAuthorName(user),
+      authorInitials: getInitials(user),
     })
       .then(() => {
         setText("");
@@ -304,8 +293,8 @@ export default function SocialPage(): JSX.Element {
     const reader = new FileReader();
     reader.onload = () => {
       setPendingImage(typeof reader.result === "string" ? reader.result : null);
-      setMsg("Image attached.");
-      setMsgOk(true);
+      setMsg("");
+      setMsgOk(false);
     };
     reader.onerror = () => {
       setPendingImage(null);
@@ -313,6 +302,12 @@ export default function SocialPage(): JSX.Element {
       setMsgOk(false);
     };
     reader.readAsDataURL(file);
+  };
+
+  const clearPendingImage = (): void => {
+    setPendingImage(null);
+    const input = document.getElementById("file-upload") as HTMLInputElement | null;
+    if (input) input.value = "";
   };
 
   return (
@@ -337,10 +332,51 @@ export default function SocialPage(): JSX.Element {
                   Post
                 </button>
                 <div className="btn-ghost">
-                  <label htmlFor="file-upload">Upload Images</label>
-                  <input id="file-upload" type="file" accept="image/png, image/jpeg, image/gif" onChange={onFile} />
+                  <label htmlFor="file-upload">{pendingImage ? "Replace image" : "Upload image"}</label>
+                  <input id="file-upload" type="file" accept="image/png, image/jpeg, image/gif, image/webp" onChange={onFile} />
                 </div>
               </div>
+              {pendingImage ? (
+                <div
+                  style={{
+                    marginTop: 12,
+                    position: "relative",
+                    display: "inline-block",
+                    maxWidth: 240,
+                    borderRadius: 12,
+                    overflow: "hidden",
+                    border: "1px solid rgba(255,255,255,0.1)",
+                    background: "rgba(255,255,255,0.03)",
+                  }}
+                >
+                  <img
+                    src={pendingImage}
+                    alt="Selected attachment preview"
+                    style={{ display: "block", width: "100%", height: "auto", maxHeight: 240, objectFit: "cover" }}
+                  />
+                  <button
+                    type="button"
+                    onClick={clearPendingImage}
+                    aria-label="Remove image"
+                    style={{
+                      position: "absolute",
+                      top: 6,
+                      right: 6,
+                      width: 26,
+                      height: 26,
+                      borderRadius: "50%",
+                      border: "none",
+                      background: "rgba(0,0,0,0.7)",
+                      color: "#fff",
+                      fontSize: "0.95rem",
+                      lineHeight: 1,
+                      cursor: "pointer",
+                    }}
+                  >
+                    ×
+                  </button>
+                </div>
+              ) : null}
               {msg ? (
                 <div className={"post-message show" + (msgOk ? " success" : " error")} id="post-message">
                   {msg}

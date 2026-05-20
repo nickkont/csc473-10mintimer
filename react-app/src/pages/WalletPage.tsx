@@ -1,13 +1,9 @@
 import {
   collection,
-  doc,
   getDocs,
-  getDoc,
   limit,
   orderBy,
   query,
-  runTransaction,
-  serverTimestamp,
 } from "firebase/firestore";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
@@ -15,6 +11,7 @@ import SiteHeader from "../components/SiteHeader";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 import { db } from "../firebase";
+import { deposit as depositApi, withdraw as withdrawApi } from "../api/wallet";
 import "../../../styles.css";
 import "../../../wallet.css";
 
@@ -29,11 +26,10 @@ interface Tx {
 type TxFilter = "all" | "deposits" | "withdrawals" | "trades";
 
 export default function WalletPage(): JSX.Element {
-  const { user, loading } = useAuth();
+  const { user, loading, balance } = useAuth();
   const navigate = useNavigate();
   const toast = useToast();
 
-  const [cash, setCash] = useState(0);
   const [invested, setInvested] = useState(0);
   const [txs, setTxs] = useState<Tx[]>([]);
   const [txFilter, setTxFilter] = useState<TxFilter>("all");
@@ -45,6 +41,8 @@ export default function WalletPage(): JSX.Element {
   const [msgOk, setMsgOk] = useState(false);
   const [dataLoading, setDataLoading] = useState(true);
 
+  const cash = balance;
+
   const fundPanelRef = useRef<HTMLElement>(null);
   const activityRef = useRef<HTMLElement>(null);
 
@@ -55,16 +53,11 @@ export default function WalletPage(): JSX.Element {
 
   const loadData = useCallback(async (): Promise<void> => {
     if (!user) return;
-    setDataLoading(true);
     try {
-      const [userSnap, posSnap, txSnap] = await Promise.all([
-        getDoc(doc(db, "users", user.uid)),
+      const [posSnap, txSnap] = await Promise.all([
         getDocs(collection(db, "users", user.uid, "positions")),
         getDocs(query(collection(db, "users", user.uid, "transactions"), orderBy("timestamp", "desc"), limit(50))),
       ]);
-
-      const walletBalance = userSnap.exists() ? Number(userSnap.data().walletBalance) || 0 : 0;
-      setCash(walletBalance);
 
       let inv = 0;
       posSnap.forEach((d) => {
@@ -99,25 +92,8 @@ export default function WalletPage(): JSX.Element {
       setMsgOk(false);
       return;
     }
-    const uid = user.uid;
-    const userRef = doc(db, "users", uid);
     try {
-      const newBalance = await runTransaction(db, async (t) => {
-        const snap = await t.get(userRef);
-        const cur = snap.exists() ? Number(snap.data().walletBalance) || 0 : 0;
-        const nb = parseFloat((cur + amount).toFixed(2));
-        t.set(userRef, { walletBalance: nb }, { merge: true });
-        const txRef = doc(collection(db, "users", uid, "transactions"));
-        t.set(txRef, {
-          type: "deposit",
-          amount,
-          description: `Deposit via ${paymentMethod}`,
-          balance: nb,
-          timestamp: serverTimestamp(),
-        });
-        return nb;
-      });
-      setCash(newBalance);
+      await depositApi(amount, paymentMethod);
       toast("Deposit successful!");
       setMsg("Deposit successful!");
       setMsgOk(true);
@@ -138,26 +114,8 @@ export default function WalletPage(): JSX.Element {
       setMsgOk(false);
       return;
     }
-    const uid = user.uid;
-    const userRef = doc(db, "users", uid);
     try {
-      const newBalance = await runTransaction(db, async (t) => {
-        const snap = await t.get(userRef);
-        const cur = snap.exists() ? Number(snap.data().walletBalance) || 0 : 0;
-        if (amount > cur) throw new Error("Insufficient balance.");
-        const nb = parseFloat((cur - amount).toFixed(2));
-        t.set(userRef, { walletBalance: nb }, { merge: true });
-        const txRef = doc(collection(db, "users", uid, "transactions"));
-        t.set(txRef, {
-          type: "withdrawal",
-          amount: -amount,
-          description: "Withdrawal",
-          balance: nb,
-          timestamp: serverTimestamp(),
-        });
-        return nb;
-      });
-      setCash(newBalance);
+      await withdrawApi(amount);
       setWithdrawAmt("");
       toast("Withdrawal successful!");
       setMsg("Withdrawal successful!");

@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { admin, adminAuth, adminDb } from "../firebaseAdmin.js";
 import { serializeDoc } from "../lib/serialize.js";
-import { requireAuth } from "../middleware/auth.js";
+import { requireAdmin, requireAuth } from "../middleware/auth.js";
 
 const router = Router();
 
@@ -32,6 +32,7 @@ router.post("/", requireAuth, async (req, res) => {
       displayName: String(body.displayName ?? ""),
       walletBalance: 0,
       role: "user",
+      approved: false,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
     res.status(201).json({ uid });
@@ -89,6 +90,21 @@ router.delete("/me", requireAuth, async (req, res) => {
   }
 });
 
+router.post("/me/claim-admin", requireAuth, async (req, res) => {
+  if (process.env.ALLOW_ADMIN_CLAIM !== "true") {
+    res.status(403).json({ error: "Admin claim is disabled on this server." });
+    return;
+  }
+  const uid = req.uid!;
+  try {
+    await adminDb.doc(`users/${uid}`).set({ role: "admin" }, { merge: true });
+    res.json({ ok: true });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Claim failed.";
+    res.status(400).json({ error: msg });
+  }
+});
+
 router.get("/me", requireAuth, async (req, res) => {
   const uid = req.uid!;
   try {
@@ -130,6 +146,129 @@ router.get("/me/transactions", requireAuth, async (req, res) => {
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Failed to load transactions.";
     res.status(500).json({ error: msg });
+  }
+});
+
+// ── Admin: list + ban + role ─────────────────────────────────────────────────
+router.get("/", requireAuth, requireAdmin, async (_req, res) => {
+  try {
+    const snap = await adminDb.collection("users").get();
+    const users = snap.docs.map((d) => {
+      const data = d.data() as Record<string, unknown>;
+      // Treat missing `approved` as true so existing accounts aren't locked out
+      // by this newer field; only `approved === false` is treated as pending.
+      const approved = data.approved === false ? false : true;
+      return {
+        uid: d.id,
+        email: String(data.email ?? ""),
+        displayName: String(data.displayName ?? ""),
+        role: String(data.role ?? "user"),
+        banned: data.banned === true,
+        approved,
+        walletBalance: Number(data.walletBalance) || 0,
+        isBot: data.isBot === true,
+      };
+    });
+    res.json({ users });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Failed to list users.";
+    res.status(500).json({ error: msg });
+  }
+});
+
+router.post("/:uid/ban", requireAuth, requireAdmin, async (req, res) => {
+  const targetUid = req.params.uid;
+  if (targetUid === req.uid) {
+    res.status(400).json({ error: "You can't ban yourself." });
+    return;
+  }
+  try {
+    await adminDb.doc(`users/${targetUid}`).set(
+      {
+        banned: true,
+        bannedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+    res.json({ ok: true });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Ban failed.";
+    res.status(400).json({ error: msg });
+  }
+});
+
+router.post("/:uid/unban", requireAuth, requireAdmin, async (req, res) => {
+  const targetUid = req.params.uid;
+  try {
+    await adminDb.doc(`users/${targetUid}`).set(
+      {
+        banned: false,
+        bannedAt: admin.firestore.FieldValue.delete(),
+      },
+      { merge: true }
+    );
+    res.json({ ok: true });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Unban failed.";
+    res.status(400).json({ error: msg });
+  }
+});
+
+router.post("/:uid/approve", requireAuth, requireAdmin, async (req, res) => {
+  const targetUid = req.params.uid;
+  try {
+    await adminDb.doc(`users/${targetUid}`).set(
+      {
+        approved: true,
+        approvedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+    res.json({ ok: true });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Approval failed.";
+    res.status(400).json({ error: msg });
+  }
+});
+
+router.post("/:uid/unapprove", requireAuth, requireAdmin, async (req, res) => {
+  const targetUid = req.params.uid;
+  if (targetUid === req.uid) {
+    res.status(400).json({ error: "You can't unapprove yourself." });
+    return;
+  }
+  try {
+    await adminDb.doc(`users/${targetUid}`).set(
+      {
+        approved: false,
+        approvedAt: admin.firestore.FieldValue.delete(),
+      },
+      { merge: true }
+    );
+    res.json({ ok: true });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Unapprove failed.";
+    res.status(400).json({ error: msg });
+  }
+});
+
+router.post("/:uid/role", requireAuth, requireAdmin, async (req, res) => {
+  const targetUid = req.params.uid;
+  const { role } = req.body as { role?: string };
+  if (role !== "admin" && role !== "user") {
+    res.status(400).json({ error: "role must be 'admin' or 'user'" });
+    return;
+  }
+  if (targetUid === req.uid && role !== "admin") {
+    res.status(400).json({ error: "You can't demote yourself." });
+    return;
+  }
+  try {
+    await adminDb.doc(`users/${targetUid}`).set({ role }, { merge: true });
+    res.json({ ok: true, role });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Role update failed.";
+    res.status(400).json({ error: msg });
   }
 });
 

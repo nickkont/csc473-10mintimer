@@ -85,6 +85,37 @@ export default function HomePage(): JSX.Element {
   ];
   const displayFeatured = featured.length >= 2 ? featured : staticFeatured;
 
+  useEffect(() => {
+    const SLIDE_IDS = [
+      "slide-hero",
+      "slide-featured",
+      "slide-how-1",
+      "slide-how-2",
+      "slide-how-3",
+    ];
+    const INTERACTIVE = new Set(["BUTTON", "A", "INPUT", "SELECT", "TEXTAREA", "LABEL", "SUMMARY"]);
+    const isInteractive = (el: HTMLElement | null): boolean => {
+      while (el && el !== document.body) {
+        if (INTERACTIVE.has(el.tagName)) return true;
+        if (el.getAttribute("role") === "button") return true;
+        if (el.hasAttribute("data-no-advance")) return true;
+        el = el.parentElement;
+      }
+      return false;
+    };
+    const handler = (e: MouseEvent) => {
+      if (isInteractive(e.target as HTMLElement)) return;
+      const slides = SLIDE_IDS.map((id) => document.getElementById(id)).filter(Boolean) as HTMLElement[];
+      if (slides.length === 0) return;
+      const y = window.scrollY;
+      const next = slides.find((s) => s.offsetTop > y + 80);
+      const target = next ?? slides[0]; // wrap to first when past last
+      target.scrollIntoView({ behavior: "smooth" });
+    };
+    document.addEventListener("click", handler);
+    return () => document.removeEventListener("click", handler);
+  }, []);
+
   return (
     <>
       <div className="bg-glow bg-glow-1" aria-hidden="true" />
@@ -92,7 +123,7 @@ export default function HomePage(): JSX.Element {
       <SiteHeader />
 
       <main className="container">
-        <section className="hero">
+        <section className="hero" id="slide-hero">
           <div className="hero-eyebrow">
             <span className="hero-eyebrow-dot" />
             Live markets · Real predictions
@@ -135,9 +166,9 @@ export default function HomePage(): JSX.Element {
           </div>
           <button
             className="scroll-hint"
-            onClick={() => document.getElementById("featured")?.scrollIntoView({ behavior: "smooth" })}
+            onClick={() => document.getElementById("slide-featured")?.scrollIntoView({ behavior: "smooth" })}
           >
-            Scroll to explore
+            Scroll or click to explore
             <svg viewBox="0 0 24 24" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M12 5v14M5 12l7 7 7-7" />
             </svg>
@@ -145,7 +176,7 @@ export default function HomePage(): JSX.Element {
         </section>
 
         {/* Featured markets — directly below "Scroll to explore" */}
-        <section id="featured" className="slideshow-section container">
+        <section id="slide-featured" className="slideshow-section container">
           <div className="slideshow-label">Featured markets</div>
           <div className="cards-scroll">
             {displayFeatured.map((m, i) => {
@@ -177,33 +208,36 @@ export default function HomePage(): JSX.Element {
           </div>
         </section>
 
-        {/* How it works */}
-        <section className="how-section">
-          <div className="how-title">How it works</div>
-          <div className="how-steps">
-            <div className="how-step">
-              <div className="how-step-num">1</div>
-              <div className="how-step-text">
-                <strong>Pick a market</strong>
-                <span>Browse events across sports, politics, CCNY, economics and more.</span>
-              </div>
+        {/* How it works — each step is its own full-height slide */}
+        {[
+          {
+            id: "slide-how-1",
+            num: 1,
+            title: "Pick a market",
+            desc: "Browse events across sports, politics, CCNY, economics and more.",
+          },
+          {
+            id: "slide-how-2",
+            num: 2,
+            title: "Buy YES or NO",
+            desc: "Each share costs between $0.01–$1.00. The price reflects the crowd's probability.",
+          },
+          {
+            id: "slide-how-3",
+            num: 3,
+            title: "Collect your payout",
+            desc: "Winning shares pay out $1.00 each when the market resolves.",
+          },
+        ].map((s) => (
+          <section key={s.id} id={s.id} className="how-step-slide">
+            <div className="how-step-inner">
+              <div className="how-step-eyebrow">How it works · Step {s.num} of 3</div>
+              <div className="how-step-num-big">{s.num}</div>
+              <h2 className="how-step-title-big">{s.title}</h2>
+              <p className="how-step-desc-big">{s.desc}</p>
             </div>
-            <div className="how-step">
-              <div className="how-step-num">2</div>
-              <div className="how-step-text">
-                <strong>Buy YES or NO</strong>
-                <span>Each share costs between $0.01–$1.00. The price reflects the crowd's probability.</span>
-              </div>
-            </div>
-            <div className="how-step">
-              <div className="how-step-num">3</div>
-              <div className="how-step-text">
-                <strong>Collect your payout</strong>
-                <span>Winning shares pay out $1.00 each when the market resolves.</span>
-              </div>
-            </div>
-          </div>
-        </section>
+          </section>
+        ))}
       </main>
 
       <footer className="footer">

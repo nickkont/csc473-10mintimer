@@ -1,4 +1,5 @@
 import { admin, adminDb } from "../firebaseAdmin.js";
+import { applyTradeImpact } from "./priceImpact.js";
 
 export interface PlaceBetInput {
   uid: string;
@@ -64,6 +65,9 @@ export async function placeBetCore(input: PlaceBetInput): Promise<PlaceBetResult
     const title = market.title ?? marketId;
     const actorName = input.actorName ?? userSnap.data()?.displayName ?? "Anonymous";
 
+    const currentYes = Number(market.yesPrice) || 0.5;
+    const { yesPrice: newYesPrice, noPrice: newNoPrice } = applyTradeImpact(currentYes, side, n);
+
     t.update(userRef, { walletBalance: newBalance });
     t.set(
       posRef,
@@ -85,7 +89,17 @@ export async function placeBetCore(input: PlaceBetInput): Promise<PlaceBetResult
       balance: newBalance,
       timestamp: admin.firestore.FieldValue.serverTimestamp(),
     });
-    t.update(marketRef, { totalTrades: trades + 1 });
+    t.update(marketRef, {
+      yesPrice: newYesPrice,
+      noPrice: newNoPrice,
+      totalTrades: trades + 1,
+    });
+    const historyRef = adminDb.collection(`markets/${marketId}/priceHistory`).doc();
+    t.set(historyRef, {
+      yesPrice: newYesPrice,
+      noPrice: newNoPrice,
+      timestamp: admin.firestore.FieldValue.serverTimestamp(),
+    });
 
     const activityRef = adminDb.collection("activity").doc();
     t.set(activityRef, {

@@ -1,20 +1,26 @@
-import {
-  Timestamp,
-  addDoc,
-  collection,
-  deleteDoc,
-  doc,
-  getDocs,
-  orderBy,
-  query,
-  serverTimestamp,
-  updateDoc,
-} from "firebase/firestore";
+import { collection, getDocs, orderBy, query } from "firebase/firestore";
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import SiteHeader from "../components/SiteHeader";
 import { useAuth } from "../context/AuthContext";
 import { db } from "../firebase";
+import {
+  clearMarketImages as clearMarketImagesApi,
+  createMarket as createMarketApi,
+  deleteMarket as deleteMarketApi,
+  patchMarketImages as patchMarketImagesApi,
+  resolveMarket as resolveMarketApi,
+  seedDemoMarkets as seedDemoMarketsApi,
+} from "../api/markets";
+import {
+  AdminUserRow,
+  approveUser as approveUserApi,
+  banUser as banUserApi,
+  listUsers,
+  setUserRole as setUserRoleApi,
+  unapproveUser as unapproveUserApi,
+  unbanUser as unbanUserApi,
+} from "../api/users";
 import "../../../styles.css";
 import "../../../admin.css";
 
@@ -43,64 +49,6 @@ const CATEGORY_EMOJI: Record<string, string> = {
   economics: "📈", culture: "🎭", climate: "🌍", other: "📊",
 };
 
-// ── Seed data ─────────────────────────────────────────────────────────────────
-const W  = "https://upload.wikimedia.org/wikipedia/commons/thumb";
-const WE = "https://upload.wikimedia.org/wikipedia/en/thumb";
-const lf = (kw: string, lock: number) => `https://loremflickr.com/100/100/${kw}?lock=${lock}`;
-
-const SEED_MARKETS = [
-  { title: "Will CCNY cancel classes for a snow day before May?",            category: "ccny",      yesPrice: 0.58, closesIn: 60,  imageUrl: lf("snowstorm", 240) },
-  { title: "Will the CCNY cafeteria add a vegan station this semester?",     category: "ccny",      yesPrice: 0.34, closesIn: 90,  imageUrl: lf("salad", 250) },
-  { title: "Will student council elections see record turnout?",              category: "ccny",      yesPrice: 0.47, closesIn: 45,  imageUrl: lf("election", 260) },
-  { title: "Will the Yankees win the World Series this year?",               category: "sports",    yesPrice: 0.28, closesIn: 180, imageUrl: `${W}/f/f0/New_York_Yankees_Primary_Logo.svg/100px-New_York_Yankees_Primary_Logo.svg.png` },
-  { title: "Will LeBron James retire before 2026?",                          category: "sports",    yesPrice: 0.15, closesIn: 200, imageUrl: `${WE}/0/03/National_Basketball_Association_logo.svg/100px-National_Basketball_Association_logo.svg.png` },
-  { title: "Will the USMNT reach the knockout stage of the 2026 World Cup?", category: "sports",    yesPrice: 0.66, closesIn: 365, imageUrl: lf("soccer", 270) },
-  { title: "Will Congress pass a new budget before the next deadline?",      category: "politics",  yesPrice: 0.48, closesIn: 60,  imageUrl: `${W}/4/4f/US_Capitol_west_side.JPG/100px-US_Capitol_west_side.JPG` },
-  { title: "Will a third-party candidate win any electoral votes in 2028?",  category: "politics",  yesPrice: 0.21, closesIn: 365, imageUrl: lf("politics", 300) },
-  { title: "Will the Fed cut rates at least twice before year end?",         category: "economics", yesPrice: 0.71, closesIn: 180, imageUrl: `${W}/b/be/Marriner_S._Eccles_Federal_Reserve_Board_Building.jpg/100px-Marriner_S._Eccles_Federal_Reserve_Board_Building.jpg` },
-  { title: "Will US inflation stay below 4% this year?",                     category: "economics", yesPrice: 0.63, closesIn: 180, imageUrl: lf("currency", 170) },
-  { title: "Will Bitcoin exceed $150k by end of 2025?",                      category: "economics", yesPrice: 0.44, closesIn: 200, imageUrl: `${W}/4/46/Bitcoin.svg/100px-Bitcoin.svg.png` },
-  { title: "Will the S&P 500 hit a new all-time high before July?",          category: "economics", yesPrice: 0.58, closesIn: 60,  imageUrl: lf("stock-market", 190) },
-  { title: "Will the US enter a recession in 2025?",                         category: "economics", yesPrice: 0.31, closesIn: 200, imageUrl: lf("recession", 210) },
-  { title: "Will Taylor Swift release a new album in 2025?",                 category: "culture",   yesPrice: 0.78, closesIn: 180, imageUrl: lf("music-concert", 90) },
-  { title: "Will a superhero movie win Best Picture at the Oscars?",         category: "culture",   yesPrice: 0.11, closesIn: 300, imageUrl: `${W}/6/66/OscarStatuette.jpg/100px-OscarStatuette.jpg` },
-  { title: "Will GTA VI release in 2025?",                                   category: "culture",   yesPrice: 0.61, closesIn: 180, imageUrl: lf("video-game", 110) },
-  { title: "Will 2025 be the hottest year on record?",                       category: "climate",   yesPrice: 0.73, closesIn: 200, imageUrl: lf("heatwave", 70) },
-  { title: "Will California face a major wildfire emergency this summer?",   category: "climate",   yesPrice: 0.81, closesIn: 120, imageUrl: lf("wildfire", 10) },
-  { title: "Will the US pass new federal clean energy legislation?",         category: "climate",   yesPrice: 0.29, closesIn: 300, imageUrl: lf("wind-turbine", 80) },
-  { title: "Will a Category 5 hurricane hit the US mainland in 2025?",      category: "climate",   yesPrice: 0.42, closesIn: 150, imageUrl: `${W}/1/10/Hurricane_Isabel_from_ISS.jpg/100px-Hurricane_Isabel_from_ISS.jpg` },
-] as const;
-
-function pickImage(title: string, category: string): string {
-  const t = title.toLowerCase();
-  if (t.includes("bitcoin"))                                return `${W}/4/46/Bitcoin.svg/100px-Bitcoin.svg.png`;
-  if (t.includes("ethereum"))                               return `${W}/0/05/Ethereum_logo_2014.svg/100px-Ethereum_logo_2014.svg.png`;
-  if (t.includes("apple"))                                  return `${W}/f/fa/Apple_logo_black.svg/100px-Apple_logo_black.svg.png`;
-  if (t.includes("yankee"))                                 return `${W}/f/f0/New_York_Yankees_Primary_Logo.svg/100px-New_York_Yankees_Primary_Logo.svg.png`;
-  if (t.includes("hurricane"))                              return `${W}/1/10/Hurricane_Isabel_from_ISS.jpg/100px-Hurricane_Isabel_from_ISS.jpg`;
-  if (t.includes("oscar") || t.includes("best picture"))   return `${W}/6/66/OscarStatuette.jpg/100px-OscarStatuette.jpg`;
-  if (t.includes("congress") || t.includes("budget"))      return `${W}/4/4f/US_Capitol_west_side.JPG/100px-US_Capitol_west_side.JPG`;
-  if (t.includes("fed cut") || t.includes("interest rate"))return `${W}/b/be/Marriner_S._Eccles_Federal_Reserve_Board_Building.jpg/100px-Marriner_S._Eccles_Federal_Reserve_Board_Building.jpg`;
-  if (t.includes("wildfire"))   return lf("wildfire", 10);
-  if (t.includes("solar"))      return lf("solar-energy", 20);
-  if (t.includes("heatwave") || t.includes("hottest")) return lf("heatwave", 70);
-  if (t.includes("soccer") || t.includes("world cup"))     return lf("soccer", 270);
-  if (t.includes("snow"))       return lf("snowstorm", 240);
-  if (t.includes("vegan"))      return lf("salad", 250);
-  if (t.includes("election"))   return lf("election", 260);
-  if (t.includes("taylor swift") || t.includes("album")) return lf("music-concert", 90);
-  if (t.includes("gta") || t.includes("video game"))     return lf("video-game", 110);
-  if (t.includes("inflation"))  return lf("currency", 170);
-  if (t.includes("s&p") || t.includes("stock"))          return lf("stock-market", 190);
-  if (t.includes("recession"))  return lf("recession", 210);
-  const fallbacks: Record<string, string> = {
-    ccny: lf("college-campus", 1), sports: lf("sports", 2),
-    politics: lf("politics", 3),   economics: lf("finance", 4),
-    culture: lf("culture", 5),     climate: lf("climate", 6),
-  };
-  return fallbacks[category] ?? lf("market", 7);
-}
-
 // ── Component ─────────────────────────────────────────────────────────────────
 export default function AdminPage(): JSX.Element {
   const { user, role, loading } = useAuth();
@@ -126,6 +74,12 @@ export default function AdminPage(): JSX.Element {
   const [patchMsg, setPatchMsg] = useState("");
   const [patching, setPatching] = useState(false);
 
+  // Users
+  const [users, setUsers] = useState<AdminUserRow[]>([]);
+  const [usersLoading, setUsersLoading] = useState(true);
+  const [userFilter, setUserFilter] = useState<"all" | "pending" | "admins" | "banned">("all");
+  const [userBusy, setUserBusy] = useState<string | null>(null);
+
   useEffect(() => {
     if (loading) return;
     if (!user) { navigate(`/login?redirect=${encodeURIComponent("/admin")}`, { replace: true }); return; }
@@ -138,8 +92,21 @@ export default function AdminPage(): JSX.Element {
     setDataLoading(false);
   };
 
+  const loadUsers = async (): Promise<void> => {
+    setUsersLoading(true);
+    try {
+      const list = await listUsers();
+      setUsers(list);
+    } finally {
+      setUsersLoading(false);
+    }
+  };
+
   useEffect(() => {
-    if (user && role === "admin") void loadMarkets();
+    if (user && role === "admin") {
+      void loadMarkets();
+      void loadUsers();
+    }
   }, [user, role]);
 
   // Derived stats
@@ -158,15 +125,12 @@ export default function AdminPage(): JSX.Element {
     if (isNaN(yp) || yp <= 0 || yp >= 1) { setCreateMsg("YES price must be between 0.01 and 0.99."); setCreateErr(true); return; }
     setCreating(true);
     try {
-      const ref = await addDoc(collection(db, "markets"), {
-        title: title.trim(), category,
+      await createMarketApi({
+        title: title.trim(),
+        category,
         imageUrl: imageUrl.trim() || null,
-        closesAt: Timestamp.fromDate(new Date(closesAt)),
-        yesPrice: yp, noPrice: parseFloat((1 - yp).toFixed(2)),
-        status: "open", totalTrades: 0, createdAt: serverTimestamp(),
-      });
-      await addDoc(collection(db, "markets", ref.id, "priceHistory"), {
-        yesPrice: yp, noPrice: parseFloat((1 - yp).toFixed(2)), timestamp: serverTimestamp(),
+        closesAt: new Date(closesAt).toISOString(),
+        yesPrice: yp,
       });
       setTitle(""); setImageUrl(""); setClosesAt(""); setYesPrice(0.5);
       setCreateMsg("Market created!"); setCreateErr(false);
@@ -181,20 +145,8 @@ export default function AdminPage(): JSX.Element {
   const seedDemoMarkets = async (): Promise<void> => {
     setSeeding(true); setSeedMsg("");
     try {
-      for (const m of SEED_MARKETS) {
-        const np = parseFloat((1 - m.yesPrice).toFixed(2));
-        const closes = new Date(Date.now() + m.closesIn * 86400000);
-        const ref = await addDoc(collection(db, "markets"), {
-          title: m.title, category: m.category, imageUrl: m.imageUrl,
-          closesAt: Timestamp.fromDate(closes),
-          yesPrice: m.yesPrice, noPrice: np, status: "open",
-          totalTrades: Math.floor(Math.random() * 200 + 20), createdAt: serverTimestamp(),
-        });
-        await addDoc(collection(db, "markets", ref.id, "priceHistory"), {
-          yesPrice: m.yesPrice, noPrice: np, timestamp: serverTimestamp(),
-        });
-      }
-      setSeedMsg(`Added ${SEED_MARKETS.length} demo markets.`);
+      const result = await seedDemoMarketsApi();
+      setSeedMsg(`Added ${result.added} demo markets.`);
       await loadMarkets();
     } catch (err) { setSeedMsg((err as Error).message || "Seed failed."); }
     finally { setSeeding(false); }
@@ -203,12 +155,8 @@ export default function AdminPage(): JSX.Element {
   const patchMarketImages = async (): Promise<void> => {
     setPatching(true); setPatchMsg("");
     try {
-      const snap = await getDocs(query(collection(db, "markets"), orderBy("createdAt", "desc")));
-      for (const d of snap.docs) {
-        const data = d.data();
-        await updateDoc(doc(db, "markets", d.id), { imageUrl: pickImage(String(data.title || ""), String(data.category || "")) });
-      }
-      setPatchMsg(`Updated ${snap.size} markets with images.`);
+      const result = await patchMarketImagesApi();
+      setPatchMsg(`Updated ${result.updated} markets with images.`);
       await loadMarkets();
     } catch (err) { setPatchMsg((err as Error).message || "Patch failed."); }
     finally { setPatching(false); }
@@ -217,24 +165,84 @@ export default function AdminPage(): JSX.Element {
   const clearMarketImages = async (): Promise<void> => {
     setPatching(true); setPatchMsg("");
     try {
-      const snap = await getDocs(query(collection(db, "markets"), orderBy("createdAt", "desc")));
-      for (const d of snap.docs) await updateDoc(doc(db, "markets", d.id), { imageUrl: null });
-      setPatchMsg(`Cleared images from ${snap.size} markets.`);
+      const result = await clearMarketImagesApi();
+      setPatchMsg(`Cleared images from ${result.cleared} markets.`);
       await loadMarkets();
     } catch (err) { setPatchMsg((err as Error).message || "Clear failed."); }
     finally { setPatching(false); }
   };
 
   const resolveMarket = async (id: string, outcome: "yes" | "no"): Promise<void> => {
-    await updateDoc(doc(db, "markets", id), { status: "resolved", outcome });
+    await resolveMarketApi(id, outcome);
     await loadMarkets();
   };
 
   const deleteMarket = async (id: string): Promise<void> => {
     if (!confirm("Delete this market? This cannot be undone.")) return;
-    await deleteDoc(doc(db, "markets", id));
+    await deleteMarketApi(id);
     await loadMarkets();
   };
+
+  const toggleBan = async (target: AdminUserRow): Promise<void> => {
+    if (target.uid === user?.uid) { alert("You can't ban yourself."); return; }
+    const action = target.banned ? "unban" : "ban";
+    if (!confirm(`Are you sure you want to ${action} ${target.displayName || target.email || target.uid}?`)) return;
+    setUserBusy(target.uid);
+    try {
+      if (target.banned) await unbanUserApi(target.uid);
+      else await banUserApi(target.uid);
+      await loadUsers();
+    } catch (err) {
+      alert((err as Error).message || `${action} failed.`);
+    } finally {
+      setUserBusy(null);
+    }
+  };
+
+  const toggleRole = async (target: AdminUserRow): Promise<void> => {
+    if (target.uid === user?.uid && target.role === "admin") {
+      alert("You can't demote yourself.");
+      return;
+    }
+    const nextRole = target.role === "admin" ? "user" : "admin";
+    if (!confirm(`Set ${target.displayName || target.email || target.uid} to ${nextRole.toUpperCase()}?`)) return;
+    setUserBusy(target.uid);
+    try {
+      await setUserRoleApi(target.uid, nextRole);
+      await loadUsers();
+    } catch (err) {
+      alert((err as Error).message || "Role update failed.");
+    } finally {
+      setUserBusy(null);
+    }
+  };
+
+  const toggleApproved = async (target: AdminUserRow): Promise<void> => {
+    if (target.uid === user?.uid && target.approved) {
+      alert("You can't unapprove yourself.");
+      return;
+    }
+    setUserBusy(target.uid);
+    try {
+      if (target.approved) await unapproveUserApi(target.uid);
+      else await approveUserApi(target.uid);
+      await loadUsers();
+    } catch (err) {
+      alert((err as Error).message || "Update failed.");
+    } finally {
+      setUserBusy(null);
+    }
+  };
+
+  const filteredUsers = users.filter((u) => {
+    if (userFilter === "pending") return !u.approved;
+    if (userFilter === "admins") return u.role === "admin";
+    if (userFilter === "banned") return u.banned;
+    return true;
+  });
+  const adminCount = users.filter((u) => u.role === "admin").length;
+  const bannedCount = users.filter((u) => u.banned).length;
+  const pendingCount = users.filter((u) => !u.approved).length;
 
   if (loading || !user || role !== "admin") {
     return <div className="admin-loading-screen">Checking permissions…</div>;
@@ -357,7 +365,7 @@ export default function AdminPage(): JSX.Element {
           <aside className="admin-tools" aria-label="Admin tools">
             <section className="admin-card">
               <h2 className="admin-card-title">Seed Demo Markets</h2>
-              <p className="admin-card-desc">Populate all categories with {SEED_MARKETS.length} realistic sample markets.</p>
+              <p className="admin-card-desc">Populate all categories with realistic sample markets.</p>
               <button type="button" className="admin-btn-secondary admin-btn-full" disabled={seeding} onClick={() => void seedDemoMarkets()}>
                 {seeding ? "Creating…" : "Seed all categories"}
               </button>
@@ -447,6 +455,93 @@ export default function AdminPage(): JSX.Element {
                   </div>
                 </div>
               ))}
+            </div>
+          )}
+        </section>
+
+        {/* ── Users list ── */}
+        <section className="admin-card admin-markets-section" aria-labelledby="users-heading" style={{ marginTop: 18 }}>
+          <div className="admin-markets-head">
+            <h2 className="admin-card-title" id="users-heading">
+              Users
+              <span className="admin-markets-count">{filteredUsers.length}</span>
+            </h2>
+            <div className="admin-filter-tabs" role="tablist">
+              {([
+                { key: "all" as const,     label: `All (${users.length})` },
+                { key: "pending" as const, label: `Pending (${pendingCount})` },
+                { key: "admins" as const,  label: `Admins (${adminCount})` },
+                { key: "banned" as const,  label: `Banned (${bannedCount})` },
+              ]).map((f) => (
+                <button
+                  key={f.key} type="button" role="tab"
+                  className={"admin-filter-tab" + (userFilter === f.key ? " active" : "")}
+                  onClick={() => setUserFilter(f.key)}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {usersLoading ? (
+            <p className="admin-empty">Loading users…</p>
+          ) : filteredUsers.length === 0 ? (
+            <p className="admin-empty">No users match this filter.</p>
+          ) : (
+            <div className="admin-market-list">
+              {filteredUsers.map((u) => {
+                const initials = (u.displayName || u.email || u.uid)
+                  .trim().split(/\s+/).map((s) => s[0]).join("").slice(0, 2).toUpperCase() || "?";
+                const isSelf = u.uid === user.uid;
+                const busy = userBusy === u.uid;
+                return (
+                  <div key={u.uid} className={"admin-user-row" + (u.banned ? " banned" : "")}>
+                    <div className={"admin-user-avatar" + (u.isBot ? " bot" : "")}>{initials}</div>
+                    <div className="admin-user-body">
+                      <div className="admin-user-top">
+                        <span className="admin-user-name">{u.displayName || "(no name)"}</span>
+                        {isSelf ? <span className="admin-role-badge admin">you</span> : null}
+                        <span className={"admin-role-badge " + (u.isBot ? "bot" : u.role)}>
+                          {u.isBot ? "bot" : u.role}
+                        </span>
+                        {!u.approved ? <span className="admin-role-badge banned">pending</span> : null}
+                        {u.banned ? <span className="admin-role-badge banned">banned</span> : null}
+                      </div>
+                      <div className="admin-user-email">{u.email || u.uid}</div>
+                      <div className="admin-user-meta">${u.walletBalance.toFixed(2)}</div>
+                    </div>
+                    <div className="admin-user-actions">
+                      {!u.approved ? (
+                        <button
+                          type="button"
+                          className="admin-user-btn promote"
+                          disabled={busy}
+                          onClick={() => void toggleApproved(u)}
+                        >
+                          {busy ? "…" : "Approve"}
+                        </button>
+                      ) : null}
+                      <button
+                        type="button"
+                        className={"admin-user-btn " + (u.role === "admin" ? "" : "promote")}
+                        disabled={busy || (isSelf && u.role === "admin")}
+                        onClick={() => void toggleRole(u)}
+                      >
+                        {busy ? "…" : u.role === "admin" ? "Demote" : "Make admin"}
+                      </button>
+                      <button
+                        type="button"
+                        className={"admin-user-btn " + (u.banned ? "" : "ban")}
+                        disabled={busy || isSelf}
+                        onClick={() => void toggleBan(u)}
+                      >
+                        {busy ? "…" : u.banned ? "Unban" : "Ban"}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
         </section>

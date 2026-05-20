@@ -1,8 +1,8 @@
 import {
-  Timestamp, addDoc, collection, deleteDoc, doc,
-  getDoc, getDocs, limit as fsLimit, orderBy, query, serverTimestamp, updateDoc,
+  collection, doc, getDoc, getDocs, limit as fsLimit, orderBy, query,
 } from "firebase/firestore";
 import { db } from "../firebase";
+import { apiRequest } from "./client";
 
 export interface MarketDoc {
   id: string;
@@ -25,6 +25,8 @@ export interface PriceTick {
   timestamp?: { seconds: number; nanoseconds?: number };
 }
 
+// ── Reads (kept on the client via Firestore SDK) ─────────────────────────────
+
 export async function listMarkets(): Promise<MarketDoc[]> {
   const snap = await getDocs(query(collection(db, "markets"), orderBy("createdAt", "desc")));
   return snap.docs.map((d) => ({ id: d.id, ...d.data() } as MarketDoc));
@@ -43,62 +45,57 @@ export async function getPriceHistory(marketId: string, lim = 100): Promise<Pric
   return snap.docs.map((d) => ({ id: d.id, ...d.data() } as PriceTick));
 }
 
+// ── Mutations (via API server) ───────────────────────────────────────────────
+
 export async function createMarket(input: {
-  title: string; category: string; closesAt: string; yesPrice: number;
+  title: string; category: string; closesAt: string; yesPrice: number; imageUrl?: string | null;
 }): Promise<MarketDoc> {
-  const np = parseFloat((1 - input.yesPrice).toFixed(2));
-  const ref = await addDoc(collection(db, "markets"), {
-    title: input.title,
-    category: input.category,
-    closesAt: Timestamp.fromDate(new Date(input.closesAt)),
-    yesPrice: input.yesPrice,
-    noPrice: np,
-    status: "open",
-    totalTrades: 0,
-    createdAt: serverTimestamp(),
+  return apiRequest<MarketDoc>("/markets", {
+    method: "POST",
+    body: input,
+    auth: true,
   });
-  await addDoc(collection(db, "markets", ref.id, "priceHistory"), {
-    yesPrice: input.yesPrice, noPrice: np, timestamp: serverTimestamp(),
-  });
-  return getMarket(ref.id);
 }
 
 export async function deleteMarket(marketId: string): Promise<void> {
-  await deleteDoc(doc(db, "markets", marketId));
+  await apiRequest<{ ok: true }>(`/markets/${marketId}`, {
+    method: "DELETE",
+    auth: true,
+  });
 }
 
 export async function resolveMarket(marketId: string, outcome: "yes" | "no"): Promise<{ ok: boolean; outcome: "yes" | "no" }> {
-  await updateDoc(doc(db, "markets", marketId), { status: "resolved", outcome });
-  return { ok: true, outcome };
+  return apiRequest<{ ok: boolean; outcome: "yes" | "no" }>(`/markets/${marketId}/resolve`, {
+    method: "POST",
+    body: { outcome },
+    auth: true,
+  });
 }
 
 export async function claimPayout(marketId: string): Promise<{ newBalance: number; payout: number }> {
-  const { auth, db: firestoreDb } = await import("../firebase");
-  const { runTransaction, doc: fsDoc, collection: fsCol, serverTimestamp: fsST } = await import("firebase/firestore");
-  const user = auth.currentUser;
-  if (!user) throw new Error("Not authenticated");
-  const uid = user.uid;
-  const userRef = fsDoc(firestoreDb, "users", uid);
-  const posRef = fsDoc(firestoreDb, "users", uid, "positions", marketId);
-  const marketRef = fsDoc(firestoreDb, "markets", marketId);
-  return runTransaction(firestoreDb, async (t) => {
-    const [uSnap, pSnap, mSnap] = await Promise.all([t.get(userRef), t.get(posRef), t.get(marketRef)]);
-    if (!pSnap.exists()) throw new Error("Position not found.");
-    if (!mSnap.exists()) throw new Error("Market not found.");
-    const mdata = mSnap.data() as { status?: string; outcome?: string; title?: string };
-    if (mdata.status !== "resolved" || !mdata.outcome) throw new Error("Market not resolved.");
-    const posData = pSnap.data() as Record<string, unknown>;
-    if (posData.payoutClaimed === true) throw new Error("Already claimed.");
-    const outcome = mdata.outcome as "yes" | "no";
-    const winShares = outcome === "yes" ? Number(posData.yesShares) || 0 : Number(posData.noShares) || 0;
-    if (winShares <= 0) throw new Error("No winning shares.");
-    const payout = parseFloat(winShares.toFixed(2));
-    const bal = uSnap.exists() ? Number(uSnap.data()?.walletBalance) || 0 : 0;
-    const nb = parseFloat((bal + payout).toFixed(2));
-    t.update(userRef, { walletBalance: nb });
-    t.set(posRef, { payoutClaimed: true, claimedAmount: payout, claimedAt: fsST() }, { merge: true });
-    const txRef = fsDoc(fsCol(firestoreDb, "users", uid, "transactions"));
-    t.set(txRef, { type: "payout", amount: payout, description: `Payout from: ${mdata.title ?? marketId}`, balance: nb, timestamp: fsST() });
-    return { newBalance: nb, payout };
+  return apiRequest<{ newBalance: number; payout: number }>(`/markets/${marketId}/claim`, {
+    method: "POST",
+    auth: true,
+  });
+}
+
+export async function seedDemoMarkets(): Promise<{ ok: true; added: number }> {
+  return apiRequest<{ ok: true; added: number }>("/markets/seed-demo", {
+    method: "POST",
+    auth: true,
+  });
+}
+
+export async function patchMarketImages(): Promise<{ ok: true; updated: number }> {
+  return apiRequest<{ ok: true; updated: number }>("/markets/patch-images", {
+    method: "POST",
+    auth: true,
+  });
+}
+
+export async function clearMarketImages(): Promise<{ ok: true; cleared: number }> {
+  return apiRequest<{ ok: true; cleared: number }>("/markets/clear-images", {
+    method: "POST",
+    auth: true,
   });
 }

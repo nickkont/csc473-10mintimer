@@ -1,9 +1,8 @@
-import { doc, setDoc } from "firebase/firestore";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import SiteHeader from "../components/SiteHeader";
+import { apiRequest } from "../api/client";
 import { useAuth } from "../context/AuthContext";
-import { db } from "../firebase";
 import "../../../styles.css";
 
 export default function ClaimAdminPage(): JSX.Element {
@@ -15,12 +14,12 @@ export default function ClaimAdminPage(): JSX.Element {
   const claim = async (): Promise<void> => {
     if (!user) { setMsg("You must be logged in first."); return; }
     try {
-      await setDoc(doc(db, "users", user.uid), { role: "admin" }, { merge: true });
+      await apiRequest("/users/me/claim-admin", { method: "POST", auth: true });
       setDone(true);
       setMsg("Done! You are now an admin. Redirecting…");
       setTimeout(() => navigate("/admin"), 1500);
     } catch (e) {
-      setMsg((e as Error).message || "Failed — check Firestore rules.");
+      setMsg((e as Error).message || "Failed.");
     }
   };
 

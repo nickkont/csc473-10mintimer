@@ -1,7 +1,8 @@
 import {
-  addDoc, collection, getDocs, limit as fsLimit, orderBy, query, serverTimestamp,
+  collection, getDocs, limit as fsLimit, orderBy, query,
 } from "firebase/firestore";
-import { auth, db } from "../firebase";
+import { db } from "../firebase";
+import { apiRequest } from "./client";
 
 export interface PostDoc {
   id: string;
@@ -25,17 +26,19 @@ export async function listPosts(lim = 100): Promise<PostDoc[]> {
 export async function createPost(input: {
   text: string; image: string | null; authorName: string; authorInitials: string;
 }): Promise<PostDoc> {
-  const user = auth.currentUser;
-  if (!user) throw new Error("Not authenticated");
-  const ref = await addDoc(collection(db, "socialPosts"), {
-    uid: user.uid,
-    authorName: input.authorName,
-    authorInitials: input.authorInitials,
-    text: input.text,
-    image: input.image,
-    likes: 0,
-    comments: 0,
-    createdAt: serverTimestamp(),
+  return apiRequest<PostDoc>("/posts", {
+    method: "POST",
+    body: input,
+    auth: true,
   });
-  return { id: ref.id, uid: user.uid, ...input, likes: 0, comments: 0 };
+}
+
+export async function createComment(postId: string, input: {
+  text: string; authorName: string; authorInitials: string;
+}): Promise<{ id: string }> {
+  return apiRequest<{ id: string }>(`/posts/${postId}/comments`, {
+    method: "POST",
+    body: input,
+    auth: true,
+  });
 }

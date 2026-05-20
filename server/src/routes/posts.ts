@@ -61,4 +61,44 @@ router.post("/", requireAuth, async (req, res) => {
   }
 });
 
+router.post("/:id/comments", requireAuth, async (req, res) => {
+  const uid = req.uid!;
+  const postId = req.params.id;
+  const body = req.body as {
+    text?: unknown;
+    authorName?: unknown;
+    authorInitials?: unknown;
+  };
+  const text = String(body.text ?? "").trim();
+  if (!text) {
+    res.status(400).json({ error: "text is required" });
+    return;
+  }
+  const authorName = String(body.authorName ?? "Anonymous");
+  const authorInitials = String(body.authorInitials ?? "?").slice(0, 4);
+
+  const postRef = adminDb.doc(`socialPosts/${postId}`);
+  try {
+    const result = await adminDb.runTransaction(async (t) => {
+      const snap = await t.get(postRef);
+      if (!snap.exists) throw new Error("Post not found.");
+      const commentRef = adminDb.collection(`socialPosts/${postId}/comments`).doc();
+      t.set(commentRef, {
+        uid,
+        authorName,
+        authorInitials,
+        text,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      const current = Number(snap.data()?.comments) || 0;
+      t.update(postRef, { comments: current + 1 });
+      return { id: commentRef.id };
+    });
+    res.status(201).json({ id: result.id, uid, authorName, authorInitials, text });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Failed to add comment.";
+    res.status(400).json({ error: msg });
+  }
+});
+
 export default router;

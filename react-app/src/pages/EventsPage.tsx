@@ -1,12 +1,14 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import ActivityTicker from "../components/ActivityTicker";
 import AppLayout from "../components/AppLayout";
 import Sparkline from "../components/Sparkline";
 import { useAuth } from "../context/AuthContext";
+import { db } from "../firebase";
 import { loginWithRedirect } from "../lib/siteUrls";
 import { placeBet, sellShares } from "../api/bets";
-import { claimPayout as apiClaimPayout, getPriceHistory, listMarkets } from "../api/markets";
+import { claimPayout as apiClaimPayout, getPriceHistory } from "../api/markets";
 import type { PriceTick } from "../api/markets";
 import { getMyPositions } from "../api/users";
 import "../../../styles.css";
@@ -59,7 +61,7 @@ export default function EventsPage(): JSX.Element {
   const navigate = useNavigate();
 
   const [markets, setMarkets] = useState<Market[]>([]);
-  const [positions, setPositions] = useState<Array<PositionRow & { title: string; market?: Market }>>([]);
+  const [rawPositions, setRawPositions] = useState<PositionRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [catFilter, setCatFilter] = useState<CatFilter>("all");
   const [userBalance, setUserBalance] = useState(0);
@@ -83,41 +85,64 @@ export default function EventsPage(): JSX.Element {
 
   useEffect(() => { setUserBalance(navBalance); }, [navBalance]);
 
-  const loadMarkets = useCallback(async (silent = false): Promise<void> => {
-    if (!silent) setLoading(true);
-    try {
-      const list = (await listMarkets()) as unknown as Market[];
+  // Live subscription to all markets — resolution, price moves, totalTrades
+  // all update instantly without a refresh.
+  useEffect(() => {
+    setLoading(true);
+    const q = query(collection(db, "markets"), orderBy("createdAt", "desc"));
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        const list = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Market));
 
-      // Detect price changes and flash affected cards
-      const flashes: Record<string, "up" | "down"> = {};
-      for (const m of list) {
-        const prev = prevPricesRef.current[m.id];
-        if (prev !== undefined && Math.abs(m.yesPrice - prev) > 0.001) {
-          flashes[m.id] = m.yesPrice > prev ? "up" : "down";
+        // Detect price changes and flash affected cards.
+        const flashes: Record<string, "up" | "down"> = {};
+        for (const m of list) {
+          const prev = prevPricesRef.current[m.id];
+          if (prev !== undefined && Math.abs(m.yesPrice - prev) > 0.001) {
+            flashes[m.id] = m.yesPrice > prev ? "up" : "down";
+          }
         }
-      }
-      prevPricesRef.current = Object.fromEntries(list.map((m) => [m.id, m.yesPrice]));
-      if (Object.keys(flashes).length > 0) {
-        setFlashMarkets(flashes);
-        setTimeout(() => setFlashMarkets({}), 1200);
-      }
+        prevPricesRef.current = Object.fromEntries(list.map((m) => [m.id, m.yesPrice]));
+        if (Object.keys(flashes).length > 0) {
+          setFlashMarkets(flashes);
+          setTimeout(() => setFlashMarkets({}), 1200);
+        }
 
-      setMarkets(list);
-      if (user) {
-        const posList = await getMyPositions();
-        setPositions(posList.map((pos) => {
-          const market = list.find((m) => m.id === pos.marketId);
-          return { ...pos, title: market ? market.title : pos.marketId, market };
-        }));
-      } else {
-        setPositions([]);
+        setMarkets(list);
+        setLoading(false);
+      },
+      () => {
+        setMarkets([]);
+        setLoading(false);
       }
+    );
+    return () => unsub();
+  }, []);
+
+  // Positions only change when the current user trades or claims, so refresh
+  // them on those events rather than on every market snapshot.
+  const reloadPositions = useCallback(async (): Promise<void> => {
+    if (!user) { setRawPositions([]); return; }
+    try {
+      const list = await getMyPositions();
+      setRawPositions(list);
     } catch {
-      if (!silent) setMarkets([]);
-    } finally {
-      if (!silent) setLoading(false);
+      setRawPositions([]);
     }
   }, [user]);
+
+  useEffect(() => { void reloadPositions(); }, [reloadPositions]);
+
+  // Join positions with their (live) market data so titles/status track updates.
+  const positions = useMemo(
+    () =>
+      rawPositions.map((pos) => {
+        const market = markets.find((m) => m.id === pos.marketId);
+        return { ...pos, title: market ? market.title : pos.marketId, market };
+      }),
+    [rawPositions, markets]
+  );
 
   const loadHistories = useCallback(async (ids: string[]): Promise<void> => {
     const results = await Promise.allSettled(
@@ -133,18 +158,15 @@ export default function EventsPage(): JSX.Element {
     setHistories(next);
   }, []);
 
-  useEffect(() => { void loadMarkets(); }, [loadMarkets]);
-
   useEffect(() => {
     if (markets.length === 0) return;
     const ids = markets.map((m) => m.id);
     void loadHistories(ids);
     const interval = setInterval(() => {
       void loadHistories(ids);
-      void loadMarkets(true);
     }, 10000);
     return () => clearInterval(interval);
-  }, [markets.length, loadHistories, loadMarkets]);
+  }, [markets.length, loadHistories]);
 
   const openTrade = (marketId: string, side: "yes" | "no"): void => {
     if (!user) { navigate(loginWithRedirect("/events")); return; }
@@ -194,7 +216,7 @@ export default function EventsPage(): JSX.Element {
         setModalMsg("Trade placed!");
       }
       setModalMsgClass("success");
-      await loadMarkets(true);
+      await reloadPositions();
       setTimeout(() => setModalOpen(false), 800);
     } catch (e) {
       const msg = (e as Error).message || "Trade failed.";
@@ -208,7 +230,7 @@ export default function EventsPage(): JSX.Element {
     try {
       const { newBalance } = await apiClaimPayout(marketId);
       setUserBalance(newBalance);
-      await loadMarkets();
+      await reloadPositions();
     } catch (e) {
       alert((e as Error).message || "Claim failed.");
     }

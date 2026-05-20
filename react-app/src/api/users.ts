@@ -1,9 +1,10 @@
-import { deleteUser } from "firebase/auth";
+import { signOut } from "firebase/auth";
 import {
-  collection, deleteDoc, doc, getDoc, getDocs,
-  limit as fsLimit, orderBy, query, serverTimestamp, setDoc, updateDoc,
+  collection, doc, getDoc, getDocs,
+  limit as fsLimit, orderBy, query,
 } from "firebase/firestore";
 import { auth, db } from "../firebase";
+import { apiRequest } from "./client";
 
 export interface MeDoc {
   uid: string;
@@ -46,6 +47,8 @@ export interface PublicProfile {
   role: string;
 }
 
+// ── Reads (kept on the client via Firestore SDK) ─────────────────────────────
+
 export async function getMe(): Promise<MeDoc> {
   const user = auth.currentUser;
   if (!user) throw new Error("Not authenticated");
@@ -82,28 +85,71 @@ export async function getPublicProfile(uid: string): Promise<PublicProfile> {
   };
 }
 
+// ── Mutations (via API server) ───────────────────────────────────────────────
+
 export async function createMe(input: { email: string; displayName: string }): Promise<void> {
-  const user = auth.currentUser;
-  if (!user) return;
-  await setDoc(doc(db, "users", user.uid), {
-    email: input.email,
-    displayName: input.displayName,
-    walletBalance: 0,
-    role: "user",
-    createdAt: serverTimestamp(),
-  }, { merge: true });
+  await apiRequest<{ uid: string }>("/users", {
+    method: "POST",
+    body: input,
+    auth: true,
+  });
 }
 
 export async function updateMe(updates: Partial<Omit<MeDoc, "uid" | "walletBalance" | "role">>): Promise<void> {
-  const user = auth.currentUser;
-  if (!user) throw new Error("Not authenticated");
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  await updateDoc(doc(db, "users", user.uid), updates as any);
+  await apiRequest<{ ok: true; updated: string[] }>("/users/me", {
+    method: "PATCH",
+    body: updates,
+    auth: true,
+  });
 }
 
 export async function deleteMe(): Promise<void> {
-  const user = auth.currentUser;
-  if (!user) throw new Error("Not authenticated");
-  await deleteDoc(doc(db, "users", user.uid));
-  await deleteUser(user);
+  if (!auth.currentUser) throw new Error("Not authenticated");
+  await apiRequest<{ ok: true }>("/users/me", { method: "DELETE", auth: true });
+  await signOut(auth);
+}
+
+// ── Admin: user management ───────────────────────────────────────────────────
+
+export interface AdminUserRow {
+  uid: string;
+  email: string;
+  displayName: string;
+  role: string;
+  banned: boolean;
+  approved: boolean;
+  walletBalance: number;
+  isBot: boolean;
+}
+
+export async function listUsers(): Promise<AdminUserRow[]> {
+  const res = await apiRequest<{ users: AdminUserRow[] }>("/users", {
+    method: "GET",
+    auth: true,
+  });
+  return res.users;
+}
+
+export async function banUser(uid: string): Promise<void> {
+  await apiRequest<{ ok: true }>(`/users/${uid}/ban`, { method: "POST", auth: true });
+}
+
+export async function unbanUser(uid: string): Promise<void> {
+  await apiRequest<{ ok: true }>(`/users/${uid}/unban`, { method: "POST", auth: true });
+}
+
+export async function setUserRole(uid: string, role: "admin" | "user"): Promise<void> {
+  await apiRequest<{ ok: true; role: string }>(`/users/${uid}/role`, {
+    method: "POST",
+    body: { role },
+    auth: true,
+  });
+}
+
+export async function approveUser(uid: string): Promise<void> {
+  await apiRequest<{ ok: true }>(`/users/${uid}/approve`, { method: "POST", auth: true });
+}
+
+export async function unapproveUser(uid: string): Promise<void> {
+  await apiRequest<{ ok: true }>(`/users/${uid}/unapprove`, { method: "POST", auth: true });
 }

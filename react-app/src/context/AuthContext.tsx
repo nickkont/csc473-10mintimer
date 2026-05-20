@@ -38,11 +38,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }): JSX.E
         return;
       }
 
-      // Live listener on the user doc — balance & role update instantly
+      // Live listener on the user doc — balance & role update instantly.
+      // Also force-signs-out the user if they're flagged as banned.
       unsubUserDoc.current = onSnapshot(
         doc(db, "users", u.uid),
         (snap) => {
           const data = snap.exists() ? snap.data() : {};
+          if (data.banned === true) {
+            alert("Your account has been banned.");
+            void signOut(auth);
+            return;
+          }
+          if (data.approved === false) {
+            alert("Your account is pending admin approval. You'll be able to log in once an admin approves it.");
+            void signOut(auth);
+            return;
+          }
           setBalance(typeof data.walletBalance === "number" ? data.walletBalance : 0);
           setRole(typeof data.role === "string" ? data.role : "user");
           setLoading(false);

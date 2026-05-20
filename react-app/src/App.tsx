@@ -13,7 +13,6 @@ import ProfilePage from "./pages/ProfilePage";
 import SignupPage from "./pages/SignupPage";
 import SocialPage from "./pages/SocialPage";
 import WalletPage from "./pages/WalletPage";
-import { useBotEngine } from "./hooks/useBotEngine";
 
 function ScrollToTop(): null {
   const { pathname } = useLocation();
@@ -21,16 +20,10 @@ function ScrollToTop(): null {
   return null;
 }
 
-function BotEngine(): null {
-  useBotEngine();
-  return null;
-}
-
 export default function App(): JSX.Element {
   return (
     <ErrorBoundary>
       <ScrollToTop />
-      <BotEngine />
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/login" element={<LoginPage />} />
